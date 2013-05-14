@@ -11,7 +11,7 @@ class App < Sinatra::Base
   enable :inline_templates
   Mongoid.load! "config/mongoid.yml"
   Pony.options = {from: 'cosmic@dream.com'}
-  $redis = Redis.connect
+  
   before do
     if session[:user] then @user = session[:user] end
   end
