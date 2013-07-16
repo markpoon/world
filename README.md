@@ -1,3 +1,9 @@
-The Cosmic Dream is a geo-locative adventure mmorpg.
+Cosmic is a browser turn-based, geo-locative rpg.
 
-Sinatra with Markdown, SASS, HAML, Mongoid for Deployment on Heroku with MongoHQ
+
+
+Front-end is rendering in haml, scss, compass, singularitygs, cofeescript, craftyjs, lovely.io with some underscorejs sprinkled on top.
+
+Backend is Mongoid 3 on MongoDB
+
+Deployed on Heroku with MongoHQ

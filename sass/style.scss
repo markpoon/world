@@ -1,0 +1,223 @@
+//////////////////////////////
+// Set legacy support
+//
+// If you need support for IE6 or IE7, you should install the Box Sizing polyfill.
+// In your project's folder from the command line, type the following:
+// compass install singularitygs/box-sizing
+//////////////////////////////
+$legacy-support-for-ie6:     false;
+$legacy-support-for-ie7:     false;
+$legacy-support-for-mozilla: false;
+
+//////////////////////////////
+// Import Base
+//////////////////////////////
+@import "partials/base";
+
+$grids: 12;
+$gutters: 1/3;
+
+
+body{
+  @include background-image(radial-gradient(center bottom, #9f9f9f, black));
+  margin: 0px;
+}
+* {
+  @include box-sizing('border-box');
+}
+
+#iu{
+  position: fixed;
+  margin: auto;
+}
+
+body {
+  padding: 0;
+}
+
+#menu, .arrow:after {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+#menu {
+  @include rounded(7px);
+  display: inline-block;
+  position: relative;
+  width: 170px;
+  padding: 0;
+  text-align: center;
+  text-indent: 0px;
+  color: #FFFFFF;
+  text-shadow: #5b5b5b 0px -1px 0px;
+  font: 14px / 18px "Myriad Pro";
+  margin: 20px;
+  -webkit-box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.4);
+  -moz-box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.4);
+  box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.4);
+  * {
+    color: #fff !important;
+  }
+  p {
+    display: block;
+    padding: 14px 10px;
+    font-size: 14px;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 4px 8px;
+    -webkit-border-radius: 7px;
+    -moz-border-radius: 7px;
+    border-radius: 7px;
+  }
+  &.north, &.south, &.east, &.west {
+    -webkit-box-shadow: none;
+    -moz-box-shadow: none;
+    box-shadow: none;
+  }
+  li {
+    border-bottom: solid 1px rgba(20, 20, 20, 0.4);
+    border-top: solid 1px rgba(80, 80, 80, 0.4);
+    padding: 2px 0 0;
+    line-height: 1.6em;
+    &:first-child {
+      border-top: none;
+      margin-top: 0;
+    }
+    &:last-child {
+      border-bottom: none;
+      margin-bottom: 6px;
+    }
+  }
+  a, input[type="text"], button {
+    margin: 4px 0;
+    display: block;
+    text-decoration: none;
+    -webkit-border-radius: 5px;
+    -moz-border-radius: 5px;
+    border-radius: 5px;
+    border: 1px solid #111;
+    background: -webkit-linear-gradient(top, #565656 22.5%, #4a4a4a 100%);
+    background: -moz-linear-gradient(top, #565656 22.5%, #4a4a4a 100%);
+    background: linear-gradient(top, #565656 22.5%, #4a4a4a 100%);
+    -webkit-box-shadow: 0px 0px 2px #222222, inset 0px -2px 3px #616161;
+    -moz-box-shadow: 0px 0px 2px #222222, inset 0px -2px 3px #616161;
+    box-shadow: 0px 0px 2px #222222, inset 0px -2px 3px #616161;
+    text-indent: 0px;
+    color: #FFFFFF;
+    text-shadow: #3c3c3c 0px -1px 0px;
+    line-height: 2em;
+    &:hover {
+      background: -webkit-gradient(linear, left top, left bottom, color-stop(0.2, #4e4e4e), color-stop(1, #4a4a4a));
+      background: -webkit-linear-gradient(top, #4e4e4e 18.6%, #4a4a4a 100%);
+      background: -moz-linear-gradient(top, #4e4e4e 18.6%, #4a4a4a 100%);
+      background: linear-gradient(top, #4e4e4e 18.6%, #4a4a4a 100%);
+    }
+    &:active {
+      background: -webkit-linear-gradient(top, #3a3a3d 22.5%, #4a4a4a 100%);
+      background: -moz-linear-gradient(top, #3a3a3d 22.5%, #4a4a4a 100%);
+      background: linear-gradient(top, #3a3a3d 22.5%, #4a4a4a 100%);
+    }
+    &:focus{ outline: none; }
+  }
+}
+
+/* -----------------------------------------------------
+	Arrows
+----------------------------------------------------- */
+
+.arrow {
+  overflow: hidden;
+  position: absolute;
+  &:after {
+    content: "";
+    position: absolute;
+    width: 27px;
+    height: 28px;
+    -webkit-transform: rotate(45deg);
+    -moz-transform: rotate(45deg);
+    -ms-transform: rotate(45deg);
+    -o-transform: rotate(45deg);
+  }
+}
+
+.north .arrow, .south .arrow {
+  display: block;
+  width: 28px;
+  height: 18px;
+  left: 50%;
+  margin-left: -18px;
+}
+
+.north .arrow {
+  top: -18px;
+  left: 50%;
+  margin-left: -13px;
+  &:after {
+    top: 10px;
+  }
+}
+
+.south .arrow {
+  bottom: -18px;
+  &:after {
+    bottom: 10px;
+  }
+}
+
+.east .arrow, .west .arrow {
+  display: block;
+  width: 18px;
+  height: 28px;
+  top: 55%;
+}
+
+.east .arrow {
+  right: 13px;
+  margin-top: -18px;
+  right: -18px;
+  &:after {
+    right: 10px;
+  }
+}
+
+.west .arrow {
+  margin-top: -18px;
+  left: -18px;
+  &:after {
+    left: 10px;
+  }
+}
+
+/* -----------------------------------------------------
+	Modifiers
+----------------------------------------------------- */
+
+.left {
+  text-align: left;
+  text-indent: 10px;
+  li {
+    text-align: left;
+    text-indent: 10px;
+    a {
+      text-align: left;
+      text-indent: 10px;
+    }
+  }
+}
+
+.nodivider li {
+  border: none !important;
+}
+
+.compact {
+  li a {
+    margin: 0;
+  }
+  &.nodivider li a {
+    margin: 2px 0 0;
+  }
+  ul {
+    padding-top: 7px;
+  }
+}

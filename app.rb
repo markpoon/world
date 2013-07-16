@@ -1,4 +1,3 @@
-# [-79.708, 43.607]
 require "net/http"
 require "uri"
 require "bigdecimal"
@@ -9,27 +8,52 @@ class App < Sinatra::Base
   set :root, File.dirname(__FILE__)
   set :views, File.dirname(__FILE__) + "/views"
   enable :inline_templates
-  Mongoid.load! "config/mongoid.yml"
-  Pony.options = {from: 'cosmic@dream.com'}
   
-  before do
-    if session[:user] then @user = session[:user] end
+  Mongoid.load! "config/mongoid.yml"
+  
+  before "/user/*" do
+    content_type 'application/json'
   end
+  
   get "/?" do
     haml :index
   end
-  get '/user/new' do
-    _u = User.where(email: @params[:email]).exists?
+  put '/user/new' do
+    user = User.where(email: @params[:email]).exists?
   end
-  get '/user/logout' do
+  get '/user/login' do
+    @auth ||=  Rack::Auth::Basic::Request.new(request.env)
+    if @auth.provided? and @auth.basic? and @auth.credentials
+      email, password = @auth.credentials
+      user = User.authenticate(email, password)
+      if user
+        status 200
+        session[:user] = user.id
+        u = user.sight
+        return u.to_json
+      else
+        status 401
+        return
+      end
+    else
+      status 400
+      return
+    end
+  end
+  put '/user/logout' do
     logout!
     @user = nil
     redirect '/'
   end
-  get "/style.css" do
-    content_type 'text/css', :charset => 'utf-8'
-    scss :style
+  get '/user/sight' do
+    user = User.find(session[:user])
+    user.sight.to_json
   end
+  get '/menus' do
+    @options = params["path"].intern
+    haml :menu, {:layout => false}
+  end
+  #
   get "/js/script.js" do
     content_type "text/javascript", :charset => 'utf-8'
     coffee :script
@@ -70,15 +94,6 @@ def omnisceient
 end
 def seed
   User.create(email:"markpoon@me.com", password:"password", coordinates:[-79.7044534523, 43.605254354])
-end
-
-def check_for_invalid(objs)
-  invalid = []
-  objs = objs.each do |obj|
-    invalid << obj if obj.invalid?
-  end
-  puts "#{invalid.count} invalid"
-  binding.pry if invalid.count > 0
 end
   
 def random(x=2, y=nil)
@@ -194,7 +209,7 @@ module Coordinates
   end
 end
 
-module Targetting
+module Targetting  
   # feed it a location or sector and it will spit back out a random coordinate
   def coordinates_in_sector(sector)
     return unless sector.class == Sector
@@ -234,6 +249,9 @@ module Targetting
     all.delete coordinates
     return sample_or_all all, n
   end
+  def sight
+    self.locations_in_circle(self.location, self.vision).without(:sector_id, :faction_id).entries
+  end
   private
   def sample_or_all(c, n=nil)
     c = c.sample(n) unless n == nil
@@ -264,10 +282,10 @@ end
 module Resources
   def self.included(reciever)
     reciever.class_eval do
-      field :rw, as: :wood, type: Integer
-      field :ro, as: :ore, type: Integer
-      field :rf, as: :food, type: Integer
-      field :ra, as: :water, type: Integer
+      field :rw, as: :wood, type: Integer, default: ->{random 25}
+      field :ro, as: :ore, type: Integer, default: ->{random 25}
+      field :rf, as: :food, type: Integer, default: ->{random 25}
+      field :ra, as: :water, type: Integer, default: ->{random 25}
     end
   end
   def eat(amount)
@@ -289,7 +307,7 @@ end
 module Prestige
   def self.included(reciever)
     reciever.class_eval do
-      field :rr, as: :reputation, type: Integer
+      field :rr, as: :reputation, type: Integer, default: ->{random 42}
     end
   end
   def influence(entity, amount)
@@ -307,7 +325,7 @@ end
 module Inventory
   def self.included(reciever)
     reciever.class_eval do
-      field :rg, as: :gold, type: Integer
+      field :rg, as: :gold, type: Integer, default: ->{random 42}
       embeds_many :items
     end
   end
@@ -668,93 +686,6 @@ class Sector
   end
 end
 
-class Location
-  include Mongoid::Document
-  include Coordinates
-  index({c: "2d"}, {min: -180, max: 180, unique: true, background: true})
-  belongs_to :sector
-  belongs_to :faction
-  has_many :places
-  has_many :users
-  has_many :characters
-  has_many :events
-  def terrain
-    self.class.intern unless self.class == Location
-  end
-end
-
-class Land < Location
-  field :r, as: :resource, type: Integer, default: ->{random 9999, 99999}
-  
-  def give_resource_to(entity, resource=nil)
-    modifier = 1
-    self.inc(:resource, -modifier)
-    entity.inc(resource||:food, modifier)
-  end
-  def forage(user)
-    give_resource_to user
-  end
-end
-
-module Huntable
-  def hunt(user)
-    give_resource_to user
-  end
-end
-module Choppable
-  def chop(user)
-    give_resource_to user, :wood
-  end
-end
-module Minable
-  def dig(user)
-    give_resource_to user, :ore
-  end
-end
-
-class Flats < Land
-  @movement = 1
-end
-class Plain < Flats
-  include Huntable
-end
-class Forest < Flats
-  @movement = 2
-  include Huntable
-  include Choppable
-end
-
-class Heights < Land
-  @movement = 2
-end
-class Hill < Heights
-  include Minable
-end
-class ForestHill < Heights
-  include Huntable
-  include Choppable
-  include Minable
-end
-class Mountain < Heights
-  include Minable
-  @movement = 3
-end
-
-class Water < Location
-  def fish(user)
-    give_resource_to user
-  end
-end
-
-class Lake < Water
-  def refill(user)
-    give_resource_to user, :water
-  end
-end
-
-class Sea < Water
-end
-
 module CreatesEvents
   def self.included(reciever)
     reciever.extend EventMethods
@@ -786,7 +717,10 @@ class Place
   belongs_to :family
   belongs_to :location
   validates_associated :location
-  belongs_to :owner, inverse_of: :properties, class_name: "Character"  
+  belongs_to :owner, inverse_of: :properties, class_name: "Character"
+  def portrait
+    self.class.to_s
+  end
   def create_event(target_location=nil)
     self.reload if self.location == nil
     if target_location.nil? and !self.class.event_location.nil?
@@ -799,8 +733,9 @@ class Place
     location.save
     location.events.last
   end
-  def portrait
-    self.class.to_s
+  PUBLIC_JSON = {:only => [:_id, :_type, :name, :family_id, :owner_id, :rw, :rg, :ro, :ra, :rf]}
+  def as_json(options={})
+    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
   end
 end
 
@@ -934,6 +869,7 @@ class User
   include Mongoid::Document
   include Entity
   include Targetting
+  PUBLIC_JSON = {:only => [:_id, :n, :faction_id], :methods => :vision}
 
   has_many :characters, dependent: :nullify
   belongs_to :faction, dependent: :nullify
@@ -975,6 +911,16 @@ class User
     return u if User.encrypt(pass, u.salt) == u.hashed_password
     nil
   end
+  def sight
+    response = {}
+    sectors = (self.characters.collect(&:location).flatten.compact.collect(&:sector).flatten.compact << self.location.sector).uniq
+    locations = sectors.collect(&:locations).flatten.compact
+    return locations.as_json
+  end
+  def as_json(options = PUBLIC_JSON)
+    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  end
+    
   protected
   def self.encrypt(pass, salt)
     Digest::SHA2.hexdigest(pass + salt)
@@ -1037,207 +983,7 @@ end
 module Skills
 end
 
-class Character < Stats
-  include Mongoid::Timestamps::Created
-  include Entity
-  include Naming
-  include Behaviors
-  include Skills
-  include Prestige
-  include Inventory
-  include Targetting
 
-  belongs_to :user, dependent: :nullify
-  
-  has_many :properties, inverse_of: :owner, class_name: "Place"
-  belongs_to :employed, inverse_of: :employees, class_name: "Place"
-  belongs_to :residence, inverse_of: :residents, class_name: "Place"
-  
-  belongs_to :family
-  has_and_belongs_to_many :progenitors, inverse_of: :progeny, class_name: "Character"
-  has_one :spouse, inverse_of: :spouse, class_name: "Character"
-  belongs_to :spouse, inverse_of: :spouse, class_name: "Character"
-  has_and_belongs_to_many :progeny, inverse_of: :progenitors, class_name: "Character"
-  validate :check_character_limit, :check_progenitors, on: :create
-  
-  has_and_belongs_to_many :abilities, inverse_of: nil
-  
-  def name; lastname ? ([firstname, lastname].join(' ')) : (firstname); end
-  field :n, as: :firstname, type: String 
-  def lastname; self.family ? (self.family.name) : (nil); end
-
-  field :p, as: :portrait, type: String
-  field :a, as: :age, type: Integer, default: ->{random 12, 26}
-  field :v, as: :vision, type: Integer
-  field :g, as: :female?, type: Boolean, default: ->{[nil, true].sample}
-  field :x, as: :homosexual?, type: Boolean, default: ->{[nil, nil, true, nil, nil].sample}
-  
-  belongs_to :allegience, class_name: "Faction", inverse_of: :subjects, dependent: :nullify
-  
-  field :f, as: :faction_attitude, type: Symbol
-
-  has_and_belongs_to_many :journeys, dependent: :nullify
-  field :j, as: :journey_attitude, type: Symbol
-  
-  after_initialize do
-    unless persisted?
-      self.firstname = random_person_name self.gender unless self.firstname
-      starting_items if items.empty?
-    end
-  end
-  
-  def gender
-    self.female? ? (:female) : (:male)
-  end
-  def gender=(gender)
-    gender == :female ? (self.g = true) : (self.g = nil)
-  end
-  def sexuality
-    self.homosexual? ? (:homosexual) : (:heterosexual)
-  end
-  def sexuality=(sex)
-    sex == :homosexual ? (self.x = true) : (self.x = true)
-  end
-  def vision
-    self.v||1
-  end
-  private
-  
-  def starting_items
-    item_classes = case self.age
-    when 12..16
-      [Weapon, BodyArmor]
-    when 17..21
-      [Weapon, BodyArmor, [Accessory, Tool]]
-    when 22..30
-      [Weapon, BodyArmor, [Accessory, Tool, Weapon], [Accessory, Tool, HeadArmor]]
-    else 
-      [Weapon, BodyArmor, [Accessory, Tool, Weapon], [Accessory, Gemstone, HeadArmor], [Gemstone, Potion, Rune]]
-    end
-    self.items = item_classes.collect{|i| Generate.item i}.flatten
-  end
-  def check_character_limit
-    return if user.blank?
-    errors.add(:base, "This user does not have enough slots open for a new character") if self.user.characters.count >= self.user.slots
-  end
-  def check_progenitors
-    errors.add(:base, "Why does this character have more than two parents?") if progenitors.count > 2
-  end
-end
-
-class Ability
-  include Mongoid::Document
-  
-  field :n, as: :name, type: Symbol
-  field :r, as: :range, type: Integer
-  field :a, as: :area, type: Integer
-  
-  field :e, as: :effect, type: Symbol
-  field :v, as: :value, type: Integer
-  field :d, as: :duration, type: Integer
-  
-  field :t, as: :cost_type, type: Symbol
-  field :c, as: :cost, type: Integer
-
-  def teach(character)
-    character.abilities << self
-  end  
-
-  def use(target=origin, origin)
-    return unless #check for range
-    if area
-      targets = #targets in area
-      targets.each{|t| affect t}
-    else
-      affect target
-    end
-    origin.inc(cost_type, cost)
-  end
-  private
-  def affect(target)
-    target.send(effect, value, duration)
-  end
-end
-
-class Journey
-  include Mongoid::Document
-  include Mongoid::Timestamps::Created
-  include Targetting
-  has_and_belongs_to_many :characters
-  field :o, as: :role, type: Array, default: [:protagonist]
-  
-  has_and_belongs_to_many :events
-  embeds_many :chapters, store_as: "e"
-  
-  has_and_belongs_to_many :sectors, inverse_of: nil
-  has_and_belongs_to_many :objectives
-  
-  field :h, as: :herald, type: Symbol, default: ->{[:aDyingDelivery, :foundAMysteriousObject, :mistakenIdentity, :mysteriousCharacterAppears, :gaveAPromise, :someRandomViolence].sample}
-  field :p, as: :plot, type: Symbol, default: ->{[:toMassacreInnocent, :toSubvertLeadership, :anInvasion, :toReleaseAncientEvil, :toPlotRevolt, :toStealResources].sample}
-  field :f, as: :conflict, type: Symbol, default: -> {[:society, :superstition, :technology].sample}
-  field :n, as: :nemesis, type: Symbol, default: ->{[:spymaster, :zealot, :leader, :slaver, :destroyer, :disguisedmonster, :wizard].sample}
-  field :t, as: :twist, type: Array, default: ->{[:doubleagent, :misdirection, :trap, :wards, :seperatedFromTheGroup, :duel, :neutralPartyCaptured, :allyCaptured].sample}
-  field :r, as: :progress, type: Symbol, default: :departure
-  
-  around_create do
-    trace_journeys_path
-    self.chapters = [TheCall.new(journey: self)]
-  end
-  
-  before_save do
-    check_progress
-    assign_character_roles
-  end
-  
-  def trace_journeys_path
-    3.times do |i|
-      c = coordinates_on_box sectors.last, 2+i, 3+i, 1
-      sectors.find_or_create_by(coordinates: c)
-    end
-  end
-  def assign_character_roles
-    role << [:mentor, :sidekick, :skeptic, :logical, :foil, :underdog].sample if characters.count < role.count
-  end
-  def role(character)
-    i = characters.find_index character
-    role[i]
-  end
-  def check_progress
-    puts "checking this Journey's Progress... Currently #{self.progress} and the chapter length is: #{self.chapters.length}"
-    self.progress = case self.chapters.length
-    when 0...2 
-      :departure
-    when 3...5 
-      (self.progress == :departure and random(3) == 1) ? (:departure) : (:departed)
-    when 5...7
-      self.progress = :initiation
-    when 8...12 
-      (self.progress == :initiation and random(3) == 1) ? (:initiation) : (:initiated)
-    when 13..14
-      :returning
-    when 15..16
-      (self.progress == :returning or random(5) == 4) ? (:returning) : (:returned)
-    else
-      :returned
-    end
-    loop create_chapter until self.chapters > 4
-    puts self.progress
-  end
-  def create_chapter
-    binding.pry
-    Generate.chapters self, self.progress
-  end
-  
-  after_create do
-    tell_story
-  end
-  
-  def tell_story
-    puts "Once upon a time, in #{self.characters.first.location.sector.name} #{self.characters.first.location.sector.coordinates}, our hero; #{characters.first.name} was just going about his day when #{self.herald.humanize} happened."
-    puts "In an epic struggle against #{self.conflict}, our heroes faces a #{self.nemesis} planning #{self.plot.humanize}."
-    chapters.each{|c| c.tell_story}
-  end  
-end
 module Challenge
   def self.included(reciever)
     reciever.class_eval do
@@ -1370,9 +1116,7 @@ module Enchanted
     base_price + (charge/charge_max * 4)
   end
   private
-  def use_item
-    puts "it's magic!"
-  end
+  def use_item; puts "it's magical!"; true; end
 end
 
 class Item
@@ -1380,8 +1124,8 @@ class Item
   embedded_in :character
   
   field :m, as: :material, type: Symbol
-  field :q, as: :quality, type: Integer, default: ->{random 5,20}
-  field :d, as: :durability, type: Integer
+  field :q, as: :quality, type: Integer, default: ->{random 10,24}
+  field :d, as: :durability, type: Integer, default: ->{random 10,24}
   
   field :e, as: :effect, type: Symbol
   field :c, as: :charge, type: Integer
@@ -1401,15 +1145,20 @@ class Item
     case material
     when :crystal
       self.quality += random(4,8)
-      self.durability -= random(4,6)
+      self.durability -= random(6,9)
+      when *[:glass, :paper]
+        self.quality += random(2,6)
+        self.durability -= random(5,8)
     when *[:gold, :silver] then
       self.quality += random(3,5)
-      self.durability -= random(2,4)
-    when *[:wood, :leather, :iron, :steel] then
-      self.quality -= random(3,5)
-    when *[:glass, :paper]
-      self.durability -= random(2,4)
+      self.durability -= random(3,4)
+    when *[:wood, :leather] then
+      self.quality -= random(3,7)
+      self.durability -= random(1,2)
+    when *[:iron, :steel]
+      self.durability += random(5,8)
     end
+    
   end
 
   def durability
@@ -1428,13 +1177,18 @@ class Item
     else
       l *= 0.7
     end
+    binding.pry if l == 0
     l.round
   end
   
-  def name; binding.pry; self.class.to_s; end
+  def name; self.class.to_s; end
   def portrait; name + (durability / 10 + 1).to_s; end
   def price; base_price; end
   def use; use_charge if use_item; end
+  PUBLIC_JSON = {:except => :e, :methods => [:_type, :durability, :durability_max, :portrait, :price]}
+  def as_json(options = PUBLIC_JSON)
+    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  end
   
   private
   def base_price
@@ -1457,16 +1211,318 @@ class Item
     character.location
   end 
 end
+class Ability
+  include Mongoid::Document
+  
+  field :n, as: :name, type: String
+  field :r, as: :range, type: Integer
+  field :a, as: :area, type: Integer
+  
+  field :e, as: :effect, type: Symbol
+  field :v, as: :value, type: Integer
+  field :d, as: :duration, type: Integer
+  
+  field :t, as: :cost_type, type: Symbol
+  field :c, as: :cost, type: Integer
+
+  def teach(character)
+    character.abilities << self
+  end  
+
+  def use(target=origin, origin)
+    return unless #check for range
+    if area
+      targets = #targets in area
+      targets.each{|t| affect t}
+    else
+      affect target
+    end
+    origin.inc(cost_type, cost)
+  end
+  PUBLIC_JSON = {}
+  def as_json(options={})
+    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  end
+  private
+  def affect(target)
+    target.send(effect, value, duration)
+  end
+end
+
+class Character < Stats
+  include Mongoid::Timestamps::Created
+  include Entity
+  include Naming
+  include Behaviors
+  include Skills
+  include Prestige
+  include Inventory
+  include Targetting
+  
+  belongs_to :user, dependent: :nullify
+  
+  has_many :properties, inverse_of: :owner, class_name: "Place"
+  belongs_to :employed, inverse_of: :employees, class_name: "Place"
+  belongs_to :residence, inverse_of: :residents, class_name: "Place"
+  
+  belongs_to :family
+  has_and_belongs_to_many :progenitors, inverse_of: :progeny, class_name: "Character"
+  has_one :spouse, inverse_of: :spouse, class_name: "Character"
+  belongs_to :spouse, inverse_of: :spouse, class_name: "Character"
+  has_and_belongs_to_many :progeny, inverse_of: :progenitors, class_name: "Character"
+  validate :check_character_limit, :check_progenitors, on: :create
+  
+  has_and_belongs_to_many :abilities, inverse_of: nil
+  
+  def name; lastname ? ([firstname, lastname].join(' ')) : (firstname); end
+  field :n, as: :firstname, type: String 
+  def lastname; self.family ? (self.family.name) : (nil); end
+
+  field :p, as: :portrait, type: String
+  field :a, as: :age, type: Integer, default: ->{random 12, 26}
+  field :v, as: :vision, type: Integer
+  field :g, as: :female?, type: Boolean, default: ->{[nil, true].sample}
+  field :x, as: :homosexual?, type: Boolean, default: ->{[nil, nil, true, nil, nil].sample}
+  
+  belongs_to :allegience, class_name: "Faction", inverse_of: :subjects, dependent: :nullify
+  
+  field :f, as: :faction_attitude, type: Symbol
+
+  has_and_belongs_to_many :journeys, dependent: :nullify
+  field :j, as: :journey_attitude, type: Symbol
+  
+  after_initialize do
+    unless persisted?
+      self.firstname = random_person_name self.gender unless self.firstname
+      starting_items if items.empty?
+    end
+  end
+  
+  def gender
+    self.female? ? (:female) : (:male)
+  end
+  def gender=(gender)
+    gender == :female ? (self.g = true) : (self.g = nil)
+  end
+  def sexuality
+    self.homosexual? ? (:homosexual) : (:heterosexual)
+  end
+  def sexuality=(sex)
+    sex == :homosexual ? (self.x = true) : (self.x = true)
+  end
+  def vision
+    self.v||1
+  end
+  PUBLIC_JSON = {:except => [:created_at, :x, :q, :n, :ability_ids, :journey_ids, :f, :location_id, :v], :methods => [:vision, :name, :gender], :include => {:items => Item::PUBLIC_JSON, :abilities=> Ability::PUBLIC_JSON}}
+  def as_json(options = PUBLIC_JSON)
+    s = super(options)
+    s.reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  end
+  private
+  
+  def starting_items
+    item_classes = case self.age
+    when 12..16
+      [Weapon, BodyArmor]
+    when 17..21
+      [Weapon, BodyArmor, [Accessory, Tool]]
+    when 22..30
+      [Weapon, BodyArmor, [Accessory, Tool, Weapon], [Accessory, Tool, HeadArmor]]
+    else 
+      [Weapon, BodyArmor, [Accessory, Tool, Weapon], [Accessory, Gemstone, HeadArmor], [Gemstone, Potion, Rune]]
+    end
+    self.items = item_classes.collect{|i| Generate.item i}.flatten
+  end
+  def check_character_limit
+    return if user.blank?
+    errors.add(:base, "This user does not have enough slots open for a new character") if self.user.characters.count >= self.user.slots
+  end
+  def check_progenitors
+    errors.add(:base, "Why does this character have more than two parents?") if progenitors.count > 2
+  end
+end
+
+class Location
+  include Mongoid::Document
+  include Coordinates
+  index({c: "2d"}, {min: -180, max: 180, unique: true, background: true})
+  belongs_to :sector
+  belongs_to :faction
+  has_many :places
+  has_many :users
+  has_many :characters
+  has_many :events
+
+  def terrain
+    self.class.intern unless self.class == Location
+  end
+  PUBLIC_JSON = {:except => [:faction_id, :sector_id, :_id], :methods => :_type, :include => {:places => Place::PUBLIC_JSON, :users => User::PUBLIC_JSON, :characters => Character::PUBLIC_JSON}}
+  def as_json(options = PUBLIC_JSON)
+    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  end
+end
+
+class Land < Location
+  field :r, as: :resource, type: Integer, default: ->{random 9999, 99999}
+  
+  def give_resource_to(entity, resource=nil)
+    modifier = 1
+    self.inc(:resource, -modifier)
+    entity.inc(resource||:food, modifier)
+  end
+  def forage(user)
+    give_resource_to user
+  end
+end
+
+module Huntable
+  def hunt(user)
+    give_resource_to user
+  end
+end
+module Choppable
+  def chop(user)
+    give_resource_to user, :wood
+  end
+end
+module Minable
+  def dig(user)
+    give_resource_to user, :ore
+  end
+end
+
+class Flats < Land
+  @movement = 1
+end
+class Plain < Flats
+  include Huntable
+end
+class Forest < Flats
+  @movement = 2
+  include Huntable
+  include Choppable
+end
+
+class Heights < Land
+  @movement = 2
+end
+class Hill < Heights
+  include Minable
+end
+class ForestHill < Heights
+  include Huntable
+  include Choppable
+  include Minable
+end
+class Mountain < Heights
+  include Minable
+  @movement = 3
+end
+
+class Water < Location
+  def fish(user)
+    give_resource_to user
+  end
+end
+
+class Lake < Water
+  def refill(user)
+    give_resource_to user, :water
+  end
+end
+
+class Sea < Water
+end
+
+class Journey
+  include Mongoid::Document
+  include Mongoid::Timestamps::Created
+  include Targetting
+  has_and_belongs_to_many :characters
+  field :o, as: :role, type: Array, default: [:protagonist]
+  
+  has_and_belongs_to_many :events
+  embeds_many :chapters, store_as: "e"
+  
+  has_and_belongs_to_many :sectors, inverse_of: nil
+  has_and_belongs_to_many :objectives
+  
+  field :h, as: :herald, type: Symbol, default: ->{[:aDyingDelivery, :foundAMysteriousObject, :mistakenIdentity, :mysteriousCharacterAppears, :gaveAPromise, :someRandomViolence].sample}
+  field :p, as: :plot, type: Symbol, default: ->{[:toMassacreInnocent, :toSubvertLeadership, :anInvasion, :toReleaseAncientEvil, :toPlotRevolt, :toStealResources].sample}
+  field :f, as: :conflict, type: Symbol, default: -> {[:society, :superstition, :technology].sample}
+  field :n, as: :nemesis, type: Symbol, default: ->{[:spymaster, :zealot, :leader, :slaver, :destroyer, :disguisedmonster, :wizard].sample}
+  field :t, as: :twist, type: Array, default: ->{[:doubleagent, :misdirection, :trap, :wards, :seperatedFromTheGroup, :duel, :neutralPartyCaptured, :allyCaptured].sample}
+  field :r, as: :progress, type: Symbol, default: :departure
+  
+  around_create do
+    trace_journeys_path
+    self.chapters = [TheCall.new(journey: self)]
+  end
+  
+  before_save do
+    check_progress
+    assign_character_roles
+  end
+  
+  def trace_journeys_path
+    3.times do |i|
+      c = coordinates_on_box sectors.last, 2+i, 3+i, 1
+      sectors.find_or_create_by(coordinates: c)
+    end
+  end
+  def assign_character_roles
+    role << [:mentor, :sidekick, :skeptic, :logical, :foil, :underdog].sample if characters.count < role.count
+  end
+  def role(character)
+    i = characters.find_index character
+    role[i]
+  end
+  def check_progress
+    puts "checking this Journey's Progress... Currently #{self.progress} and the chapter length is: #{self.chapters.length}"
+    self.progress = case self.chapters.length
+    when 0...2 
+      :departure
+    when 3...5 
+      (self.progress == :departure and random(3) == 1) ? (:departure) : (:departed)
+    when 5...7
+      self.progress = :initiation
+    when 8...12 
+      (self.progress == :initiation and random(3) == 1) ? (:initiation) : (:initiated)
+    when 13..14
+      :returning
+    when 15..16
+      (self.progress == :returning or random(5) == 4) ? (:returning) : (:returned)
+    else
+      :returned
+    end
+    loop create_chapter until self.chapters > 4
+    puts self.progress
+  end
+  def create_chapter
+    binding.pry
+    Generate.chapters self, self.progress
+  end
+  
+  after_create do
+    tell_story
+  end
+  
+  def tell_story
+    puts "Once upon a time, in #{self.characters.first.location.sector.name} #{self.characters.first.location.sector.coordinates}, our hero; #{characters.first.name} was just going about his day when #{self.herald.humanize} happened."
+    puts "In an epic struggle against #{self.conflict}, our heroes faces a #{self.nemesis} planning #{self.plot.humanize}."
+    chapters.each{|c| c.tell_story}
+  end  
+end
 
 class Gemstone < Item
-  around_create do
-    self.material = :crystal
+  after_initialize do
+    unless self.material then self.material = :crystal end
   end
 end
 
 class Readable < Item
-  around_create do
-    self.material = :paper
+  after_initialize do
+    unless self.material then self.material = :paper end
   end
   field :r, as: :read, type: String
 end
@@ -1478,8 +1534,8 @@ class Tool < Item
 end
 
 class LockPicks < Tool
-  around_create do
-    self.material = [:iron, :steel]
+  after_initialize do
+    unless self.material then self.material = [:iron, :steel] end
   end
   private
   def use_item(obj)
@@ -1488,8 +1544,8 @@ class LockPicks < Tool
 end
 
 class FlintAndSteel < Tool
-  around_create do
-    self.material = :steel
+  after_initialize do
+    unless self.material then self.material = :steel end
   end
   private
   def use_item(target)
@@ -1498,8 +1554,8 @@ class FlintAndSteel < Tool
 end
 
 class Potion < Item
-  around_create do
-    self.material = :glass
+  after_initialize do
+    unless self.material then self.material = :glass end
   end
   include Enchanted
   field :a, as: :attribute, type: Symbol
@@ -1509,8 +1565,8 @@ end
 
 class Rune < Item
   include Enchanted
-  around_create do
-    self.material = [:paper, :leather]
+  after_initialize do
+    unless self.material then self.material = [:paper, :leather] end
   end
   def use_item(target)
     self.delete if ability.use(target, charge)
@@ -1518,8 +1574,8 @@ class Rune < Item
 end
 
 class Key < Item
-  around_create do
-    self.material = [:wood, :iron, :steel]
+  after_initialize do
+    unless self.material then self.material = [:wood, :iron, :steel] end
   end
   field :o, as: :lock, type: Moped::BSON::ObjectId
   validates_presence_of :lock
@@ -1558,36 +1614,36 @@ class Wand < Weapon
   include RangedWeapon
   @damage = 2
   @range = 4
-  around_create do
-    self.material = [:wood, :iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:wood, :iron, :steel, :silver, :gold] end
   end
 end
 
 class Axe < Weapon
   @damage = 4
-  around_create do
-    self.material = [:iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class Sword < Weapon
   @damage = 5
-  around_create do
-    self.material = [:iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class Dagger < Weapon
   @damage = 3
-  around_create do
-    self.material = [:iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class Mace < Weapon
   @damage = 4
-  around_create do
-    self.material = [:iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
@@ -1595,8 +1651,8 @@ class Bow < Weapon
   @damage = 3
   @range = 5
   include RangedWeapon
-  around_create do
-    self.material = :wood
+  after_initialize do
+    unless self.material then self.material = :wood end
   end
 end
 
@@ -1604,8 +1660,8 @@ class Sling < Weapon
   include RangedWeapon
   @damage = 2
   @range = 3
-  around_create do
-    self.material = :leather
+  after_initialize do
+    unless self.material then self.material = :leather end
   end
 end
   
@@ -1618,15 +1674,15 @@ class Armor < Equipment
 end
 
 class Shield < Armor
-  around_create do
-    self.material = :wood
+  after_initialize do
+    unless self.material then self.material = :wood end
   end
 end
 
 class MetalShield < Armor
   @defense = 2
-  around_create do
-    self.material = [:iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
@@ -1635,47 +1691,47 @@ end
 
 class LeatherArmor < BodyArmor
   @defense = 2
-  around_create do
-    self.material = :leather
+  after_initialize do
+    unless self.material then self.material = :leather end
   end
 end
 
 class Chainmail < BodyArmor 
   @defense = 3
-  around_create do
-    self.material = [:iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class PlateArmor < BodyArmor
   @defense = 4
-  around_create do
-    self.material = [:iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class HeadArmor < Armor
   @defense = 1
-  around_create do
-    self.material = [:leather, :iron, :steel]
+  after_initialize do
+    unless self.material then self.material = [:leather, :iron, :steel] end
   end
 end
 
 class Accessory < Equipment
-  around_create do
-    self.material = [:leather, :iron, :steel, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:leather, :iron, :steel, :silver, :gold] end
   end
 end
 
 class Ring < Accessory
-  around_create do
-    self.material = [:silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:silver, :gold] end
   end
 end
 
 class Necklace < Accessory
-  around_create do
-    self.material = [:leather, :silver, :gold]
+  after_initialize do
+    unless self.material then self.material = [:leather, :silver, :gold] end
   end
 end
 
@@ -2206,5 +2262,48 @@ class Objective
     event.describe
   end
 end
+# Binding.pry
+__END__
 
-Binding.pry
+@@index
+#cr-stage
+
+@@layout
+!!! 5
+%html
+  %head
+    %title Cosmic - Geolocation game written in coffeescript, lovely.io, crafty.js, backend in ruby, sinatra, mongodb
+    %meta{name: "viewport", content: "width=device-width,user-scalable=0,initial-scale=1.0,minimum-scale=0.5,maximum-scale=1.0"}
+    %link{href: "css/style.css", rel: "stylesheet"}
+  %body
+    = yield
+  %footer
+  %script{src: "http://cdn.lovely.io/core.js", type: "text/javascript"}
+  %script{src: "/js/underscore-min.js", type: "text/javascript"}  
+  %script{src: "/js/crafty.js", type: "text/javascript"}
+  %script{src: "/js/isometric2.js", type: "text/javascript"}
+  %script{src: "/js/components.js", type: "text/javascript"}
+  %script{src: "/js/script.js", type: "text/javascript"}
+
+@@menu
+#menu
+  = render 'haml', @options
+
+@@login
+%input{:type => "text", :id =>"loginEmail", :name => "email", :placeholder => "Your@Email.com"}
+%input{:type => "text", :id =>"loginPassword", :name => "password", :placeholder => "Pass Phrase"}
+%button{:id =>"loginButton"} Login to Cosmic
+  
+@@404
+.warning
+  %h1 404
+  %hr 
+  Apologies, there were no results found for your query.
+  %hr
+  
+@@500
+.warning
+  %h1 500
+  %hr
+  %p @error.message
+  %hr

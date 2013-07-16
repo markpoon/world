@@ -1,3 +1,4 @@
+
 development: &defaults
   # Configure available database sessions. (required)
   sessions:

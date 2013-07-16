@@ -7,51 +7,86 @@ GEM
     activesupport (3.2.13)
       i18n (= 0.6.1)
       multi_json (~> 1.0)
-    bson (1.8.5)
-    bson_ext (1.8.5)
-      bson (~> 1.8.5)
+    binding_of_caller (0.7.2)
+      debug_inspector (>= 0.0.1)
+    bond (0.4.3)
+    bson (1.9.1)
+    bson_ext (1.9.1)
+      bson (~> 1.9.1)
     builder (3.0.4)
+    chunky_png (1.2.8)
     coderay (1.0.9)
     coffee-script (2.2.0)
       coffee-script-source
       execjs
-    coffee-script-source (1.6.2)
+    coffee-script-source (1.6.3)
     colorize (0.5.8)
+    columnize (0.3.6)
+    compass (0.12.2)
+      chunky_png (~> 1.2)
+      fssm (>= 0.2.7)
+      sass (~> 3.1)
     daemons (1.1.9)
+    debug_inspector (0.0.2)
+    debugger (1.6.1)
+      columnize (>= 0.3.1)
+      debugger-linecache (~> 1.2.0)
+      debugger-ruby_core_source (~> 1.2.3)
+    debugger-linecache (1.2.0)
+    debugger-ruby_core_source (1.2.3)
     eventmachine (1.0.3)
     execjs (1.4.0)
       multi_json (~> 1.0)
-    haml (4.0.2)
+    fssm (0.2.10)
+    haml (4.0.3)
       tilt
     i18n (0.6.1)
+    interception (0.3)
+    jist (1.5.1)
+      json
     json (1.8.0)
-    mail (2.5.4)
-      mime-types (~> 1.16)
-      treetop (~> 1.4.8)
     method_source (0.8.1)
-    mime-types (1.23)
-    mongoid (3.1.3)
+    mongoid (3.1.4)
       activemodel (~> 3.2)
-      moped (~> 1.4.2)
+      moped (~> 1.4)
       origin (~> 1.0)
       tzinfo (~> 0.3.22)
-    moped (1.4.5)
-    multi_json (1.7.3)
+    moped (1.5.0)
+    multi_json (1.7.7)
     origin (1.1.0)
-    polyglot (0.3.3)
-    pony (1.4.1)
-      mail (> 2.0)
     pry (0.9.12.2)
       coderay (~> 1.0.5)
       method_source (~> 0.8)
       slop (~> 3.4)
+    pry-debugger (0.2.2)
+      debugger (~> 1.3)
+      pry (~> 0.9.10)
+    pry-doc (0.4.6)
+      pry (>= 0.9)
+      yard (>= 0.8)
+    pry-docmore (0.1.1)
+      pry
+      pry-doc
+    pry-plus (1.0.0)
+      bond
+      jist
+      pry-debugger
+      pry-doc
+      pry-docmore
+      pry-rescue
+      pry-stack_explorer
+    pry-rescue (1.1.1)
+      interception (>= 0.3)
+      pry
+    pry-stack_explorer (0.4.9)
+      binding_of_caller (>= 0.7)
+      pry (~> 0.9.11)
     rack (1.5.2)
     rack-protection (1.5.0)
       rack
-    redcarpet (2.2.2)
     sass (3.2.9)
-    sinatra (1.4.2)
-      rack (~> 1.5, >= 1.5.2)
+    sinatra (1.4.3)
+      rack (~> 1.4)
       rack-protection (~> 1.4)
       tilt (~> 1.3, >= 1.3.4)
     slop (3.4.5)
@@ -60,10 +95,8 @@ GEM
       eventmachine (>= 0.12.6)
       rack (>= 1.0.0)
     tilt (1.4.1)
-    treetop (1.4.12)
-      polyglot
-      polyglot (>= 0.3.1)
     tzinfo (0.3.37)
+    yard (0.8.6.2)
 
 PLATFORMS
   ruby
@@ -72,12 +105,12 @@ DEPENDENCIES
   bson_ext
   coffee-script
   colorize
+  compass
   haml
   json
   mongoid
-  pony
   pry
-  redcarpet
+  pry-plus
   sass
   sinatra
   thin

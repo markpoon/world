@@ -63,12 +63,12 @@ Crafty.extend isometric2:
   ###
   place: (x, y, z, obj) ->
     pos = @pos2px(x, y)
-    pos.top -= z * (@_tile.width / 2)
+    pos.top -= z * (@_tile.height / 2)
     obj.attr(
       x: pos.left
       y: pos.top
     ).z += z
-    this
+    @
 
   
   ###
