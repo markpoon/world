@@ -23,7 +23,7 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
         that.set location
     set: (obj) ->
       Crafty.viewport.x = -obj.x - 64 + Crafty.viewport.width / 2 
-      Crafty.viewport.y = -obj.y + 64  + Crafty.viewport.height / 2
+      Crafty.viewport.y = -obj.y + 64  + Crafty.viewport.height / 3
     
   Crafty.c "Location",
     _sight: 0
