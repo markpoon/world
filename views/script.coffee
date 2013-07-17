@@ -569,7 +569,7 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
     console.log "Signing in with #{email}, #{password} at: #{root.center}"
     ajax.get "/user/login",
       params:
-        coordinates: root.center
+        coordinates: center
       headers:
         Authorization: "Basic "+btoa(email+":"+password)
       success: ->
@@ -619,7 +619,7 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
       success: ->
         "#cr-stage".append(@responseText).fade("in")
         $("#loginButton").onClick ->
-          login($('#loginEmail')[0]._.value, $('#loginPassword')[0]._.value)
+          login($('#loginEmail')[0]._.value, $('#loginPassword')[0]._.value) if center
       failure:(e)->
         console.log "Failed to Load Login partial, error: #{e}"
       
