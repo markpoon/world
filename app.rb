@@ -188,6 +188,9 @@ module Entity
     WorldFactory.fabricate(coordinates.to_d(2).to_f) unless location_check.exists?
     self.location = location_check.first
   end
+  def coordinates
+    self.location.coordinates
+  end
 end
 
 module Coordinates
@@ -869,7 +872,7 @@ class User
   include Mongoid::Document
   include Entity
   include Targetting
-  PUBLIC_JSON = {:only => [:_id, :n, :faction_id], :methods => :vision}
+  PUBLIC_JSON = {:only => [:_id, :n, :faction_id], :methods => [:vision, :coordinates]}
 
   has_many :characters, dependent: :nullify
   belongs_to :faction, dependent: :nullify
@@ -913,9 +916,12 @@ class User
   end
   def sight
     response = {}
-    sectors = (self.characters.collect(&:location).flatten.compact.collect(&:sector).flatten.compact << self.location.sector).uniq
-    locations = sectors.collect(&:locations).flatten.compact
-    return locations.as_json
+    response["users"] = [self.as_json]
+    response["locations"] = (self.characters.collect(&:sight) << super).flatten.compact.uniq.as_json
+    response["characters"] = self.characters.collect(&:as_json)
+    # sectors = (self.characters.collect(&:location).flatten.compact.collect(&:sector).flatten.compact << self.location.sector).uniq
+    # locations = sectors.collect(&:locations).flatten.compact
+    return response
   end
   def as_json(options = PUBLIC_JSON)
     super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
@@ -1185,7 +1191,7 @@ class Item
   def portrait; name + (durability / 10 + 1).to_s; end
   def price; base_price; end
   def use; use_charge if use_item; end
-  PUBLIC_JSON = {:except => :e, :methods => [:_type, :durability, :durability_max, :portrait, :price]}
+  PUBLIC_JSON = {:except => :e, :methods => [:durability, :durability_max, :portrait, :price]}
   def as_json(options = PUBLIC_JSON)
     super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
   end
@@ -1313,7 +1319,7 @@ class Character < Stats
   def vision
     self.v||1
   end
-  PUBLIC_JSON = {:except => [:created_at, :x, :q, :n, :ability_ids, :journey_ids, :f, :location_id, :v], :methods => [:vision, :name, :gender], :include => {:items => Item::PUBLIC_JSON, :abilities=> Ability::PUBLIC_JSON}}
+  PUBLIC_JSON = {:except => [:created_at, :x, :q, :n, :ability_ids, :journey_ids, :f, :location_id, :v], :methods => [:vision, :name, :gender, :coordinates], :include => {:items => Item::PUBLIC_JSON, :abilities=> Ability::PUBLIC_JSON}}
   def as_json(options = PUBLIC_JSON)
     s = super(options)
     s.reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
@@ -1356,7 +1362,7 @@ class Location
   def terrain
     self.class.intern unless self.class == Location
   end
-  PUBLIC_JSON = {:except => [:faction_id, :sector_id, :_id], :methods => :_type, :include => {:places => Place::PUBLIC_JSON, :users => User::PUBLIC_JSON, :characters => Character::PUBLIC_JSON}}
+  PUBLIC_JSON = {:except => [:faction_id, :sector_id, :_id], :methods => :_type, :include => {:places => Place::PUBLIC_JSON}}
   def as_json(options = PUBLIC_JSON)
     super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
   end
@@ -2282,17 +2288,19 @@ __END__
   %script{src: "/js/underscore-min.js", type: "text/javascript"}  
   %script{src: "/js/crafty.js", type: "text/javascript"}
   %script{src: "/js/isometric2.js", type: "text/javascript"}
-  %script{src: "/js/components.js", type: "text/javascript"}
   %script{src: "/js/script.js", type: "text/javascript"}
 
 @@menu
-#menu
-  = render 'haml', @options
+#menuContainer
+  #menu
+    = render 'haml', @options
 
 @@login
+Demo: no email or password
 %input{:type => "text", :id =>"loginEmail", :name => "email", :placeholder => "Your@Email.com"}
 %input{:type => "text", :id =>"loginPassword", :name => "password", :placeholder => "Pass Phrase"}
-%button{:id =>"loginButton"} Login to Cosmic
+%button{:id =>"loginButton"} Login
+%button{:id =>"loginButton"} Sign Up
   
 @@404
 .warning

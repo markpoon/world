@@ -38,19 +38,24 @@ body {
 #menu, .arrow:after {
   background: rgba(0, 0, 0, 0.8);
 }
+#menuContainer{
+  width:  170px;
+  position: absolute;
+  margin: -85px 0 0 -85px;
+  left: 50%;
+  top: 50%;
+}
 
 #menu {
   @include rounded(7px);
-  display: inline-block;
-  position: relative;
   width: 170px;
-  padding: 0;
+  padding: 15px 10px;
   text-align: center;
   text-indent: 0px;
+  display: box;
   color: #FFFFFF;
   text-shadow: #5b5b5b 0px -1px 0px;
   font: 14px / 18px "Myriad Pro";
-  margin: 20px;
   -webkit-box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.4);
   -moz-box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.4);
   box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.4);
@@ -90,6 +95,7 @@ body {
     }
   }
   a, input[type="text"], button {
+    width:  150px;
     margin: 4px 0;
     display: block;
     text-decoration: none;
@@ -220,4 +226,8 @@ body {
   ul {
     padding-top: 7px;
   }
+}
+
+button{
+  width: 150px;
 }
