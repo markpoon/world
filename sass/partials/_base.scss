@@ -3,21 +3,3 @@
 //////////////////////////////
 @import "singularitygs";
 @import "compass/css3";
-
-@mixin textshadow{
-  color: rgba(82, 82, 82, 0.8);
-  text-shadow: 1px 4px 6px #ededed, 0 0 0 #000, 1px 4px 6px #ededed;
-}
-
-@mixin shadow($weight: 2px, $blur: 7px, $colour: rgba(0, 0, 0, 0.5)){
-  -webkit-box-shadow: $weight $weight $blur $colour;
-  -moz-box-shadow: $weight $weight $blur $colour;
-  box-shadow: $weight $weight $blur $colour;
-}
-
-@mixin rounded($topleft: 12px, $bottomleft:$topleft, $bottomright:$bottomleft, $topright:$topleft){
-  -moz-border-radius: $topleft $topright $bottomright $bottomleft;
-  -webkit-border-radius: $topleft $topright $bottomright $bottomleft;
-  border-radius: $topleft $topright $bottomright $bottomleft;
-  -moz-background-clip: padding; -webkit-background-clip: padding-box; background-clip: padding-box;
-}

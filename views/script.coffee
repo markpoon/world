@@ -2,7 +2,7 @@ root = exports ? @
 root.updating= false # is javascript ajaxing?
 root.watchPosition= null # navigator.geolocation
 root.grid = null # this is where the isometric grid is held
-root.center= null # coordinates where x and y == 0
+root.center= [-79.708, 43.607] # coordinates where x and y == 0
 root.delta= null # number of positions to move to be in the "center" of the screen regardless of where it is
 root.authenticated= false # logged in?
 ###
@@ -636,14 +636,14 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
   hasGeo= (position) ->
     console.log "location update:[#{position.coords.longitude}, #{position.coords.latitude}]"
     unless updating
-      coordinates = [-79.708, 43.607] # [position.coords.longitude, position.coords.latitude]
+      coordinates = [position.coords.longitude, position.coords.latitude]
       if root.center is null or (parseFloat(coordinate).toFixed 3 for coordinate in root.center) == (parseFloat(coordinate).toFixed 3 for coordinate in coordinates)
         root.center = coordinates unless root.center
         updateMap coordinates if root.authenticated
     return
       
   noGeo= (error) ->
-    alert "Geolocation error - code: " + error.code + " message : " + error.message
+    console.log "Geolocation error - code: " + error.code + " message : " + error.message
     return
   
   updateMap=(coordinates) ->

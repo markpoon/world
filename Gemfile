@@ -1,19 +1,32 @@
-source "https://rubygems.org"
-ruby "2.0.0"
+source 'https://rubygems.org'
+ruby '2.0.0'
 
-gem "sinatra"
-gem "thin"
-gem "colorize"
-gem "bson_ext"
+gem 'sinatra'
+gem 'sinatra-contrib'
+gem 'unicorn'
+gem 'data_mapper'
+gem 'whenever'
+gem 'coffee-script'
+gem 'slim'
+gem 'sass'
+gem 'compass'
+gem 'json'
 
-gem "mongoid"
+group :development do
+  gem 'dm-sqlite-adapter'
+  gem 'pry'
+  gem 'pry-doc'
+  gem 'pry-docmore'
+  gem 'pry-debugger'
+  gem 'pry-rescue'
+  gem 'pry-stack_explorer'
+  gem 'guard'
+  gem 'guard-cucumber'
+  gem 'guard-compass'
+  gem 'guard-coffeescript'
+end
 
-gem "coffee-script"
-gem "haml"
-gem "sass"
-gem "compass"
-gem "json"
 
-gem "pry"
-gem "pry-plus"
-
+group :production do
+  gem 'pg'
+end

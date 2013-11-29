@@ -1,0 +1,11 @@
+[ "item",
+  "place",
+  "location",
+  "ability",
+  "character",
+  "user",
+  "event",
+  "sector",
+  "journey",
+  "family",
+  "faction",].each{ |file| require_relative file}
