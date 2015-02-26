@@ -42,7 +42,7 @@ end
 Effect = Struct.new :name, :duration, :value
 
 class Stats
-  include Mongoid::Document
+  include DataMapper::Resource
   field :sw, as: :wound, type: Integer
   field :sc, as: :scratch, type: Integer
   field :si, as: :injury, type: Integer

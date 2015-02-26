@@ -1,6 +1,6 @@
 
 class Ability
-  include Mongoid::Document
+  include DataMapper::Resource
   
   field :n, as: :name, type: String
   field :r, as: :range, type: Integer

@@ -1,5 +1,5 @@
 class Faction
-  include Mongoid::Document
+  include DataMapper::Resource
   include Mongoid::Timestamps::Created
   include Naming
   include Ambition
@@ -70,7 +70,7 @@ class Hegemony < Structured
 end
 
 class Objective
-  include Mongoid::Document
+  include DataMapper::Resource
   include Targetting
   embedded_in :ambitions, polymorphic: true
   field :a, type: Boolean, default: true

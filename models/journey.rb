@@ -1,5 +1,5 @@
 class Journey
-  include Mongoid::Document
+  include DataMapper::Resource
   include Mongoid::Timestamps::Created
   include Targetting
   has_and_belongs_to_many :characters
@@ -78,7 +78,7 @@ class Journey
   end  
 end
 class Chapter
-  include Mongoid::Document
+  include DataMapper::Resource
   include Challenge
   embedded_in :journey
   field :e, type: Integer

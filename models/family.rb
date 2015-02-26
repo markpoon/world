@@ -1,5 +1,5 @@
 class Family
-  include Mongoid::Document
+  include DataMapper::Resource
   include Mongoid::Timestamps::Created
   include Naming
   include Ambition

@@ -51,7 +51,7 @@ module Taskable
 end
 
 class Event
-  include Mongoid::Document
+  include DataMapper::Resource
   include Mongoid::Timestamps::Created
   include Challenge
   include Taskable
@@ -199,7 +199,7 @@ class Assassinate < War
 end
 
 class Task
-  include Mongoid::Document
+  include DataMapper::Resource
   include Taskable
   embeds_many :tasks, as: :assignment, store_as: :a
   embedded_in :assignment, polymorphic: true

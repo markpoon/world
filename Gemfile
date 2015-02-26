@@ -26,7 +26,7 @@ group :development do
   gem 'guard-coffeescript'
 end
 
-
 group :production do
   gem 'pg'
+  gem 'dm-postgres-adapter'
 end

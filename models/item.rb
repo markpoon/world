@@ -70,7 +70,7 @@ module Enchanted
 end
 
 class Item
-  include Mongoid::Document
+  include DataMapper::Resource
   embedded_in :character
   
   field :m, as: :material, type: Symbol
