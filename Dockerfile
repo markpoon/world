@@ -8,8 +8,7 @@ RUN sed -i 's|deb.debian.org|archive.debian.org|g; s|security.debian.org|archive
 COPY --from=node:16-bullseye-slim /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 COPY Gemfile Gemfile.lock ./
-RUN gem install bundler:1.17.2 && bundle config --local without development && bundle install --jobs 4
+RUN gem install bundler:1.17.2 && bundle install --jobs 4
 COPY . .
 RUN bundle exec ruby lib/precompile_coffee.rb
-ENV RACK_ENV=production
-CMD ["sh", "-c", "bundle exec puma -w 0 -t 1:5 -p ${PORT:-10000} -e production config.ru"]
+CMD ["sh", "-c", "bundle exec puma -w 0 -t 1:5 -p ${PORT:-10000} -e ${RACK_ENV:-production} config.ru"]

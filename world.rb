@@ -24,10 +24,13 @@ class Sphere < Sinatra::Base
     register Sinatra::Reloader
 
     Bundler.require(:development)
-    DataMapper.setup(:default, ENV['DATABASE_URL'] || "sqlite3://#{Dir.pwd}/dev.db")
+    DataMapper.setup(:default, (ENV['DATABASE_URL'] || "sqlite3://#{Dir.pwd}/dev.db").sub(/\Apostgresql:/, 'postgres:'))
 
-    get '/binding' do
-      Binding.pry
+    # interactive debugger endpoint: never expose it on a public host (Render sets RENDER)
+    unless ENV['RENDER']
+      get '/binding' do
+        Binding.pry
+      end
     end
   end
 
