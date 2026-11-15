@@ -40,12 +40,19 @@ fade = (element, direction, done) ->
     setTimeout (-> done?()), 400
 
 ajax =
-  get: (url, options = {}) ->
+  get: (url, options = {}) -> ajax.request "GET", url, options
+  post: (url, options = {}) -> ajax.request "POST", url, options
+  request: (method, url, options = {}) ->
     query = new URLSearchParams()
     for key, value of (options.params or {})
       query.append key, (if Array.isArray(value) then value.join(",") else value)
     fullUrl = if query.toString() then "#{url}?#{query}" else url
-    fetch(fullUrl, headers: options.headers or {}, credentials: "same-origin")
+    headers = options.headers or {}
+    init = method: method, headers: headers, credentials: "same-origin"
+    if options.json?
+      headers["Content-Type"] = "application/json"
+      init.body = JSON.stringify(options.json)
+    fetch(fullUrl, init)
       .then (response) ->
         response.text().then (text) ->
           context = responseText: text, status: response.status
@@ -626,6 +633,35 @@ document.addEventListener "DOMContentLoaded", ->
       button.disabled = busy
     document.querySelector("#loginForm")?.setAttribute "aria-busy", String(busy)
 
+  signup = (email, password) ->
+    if email is "" or password is ""
+      setMessage "To sign up, enter an email and a passphrase (8+ characters). Leave both blank and tap Login to try the demo.", "info"
+      return
+    if password.length < 8
+      setMessage "Your passphrase needs at least 8 characters."
+      return
+    root.updating = true
+    setBusy true
+    setMessage "Creating your account...", "info"
+    ajax.post "/user/signup",
+      json:
+        email: email
+        password: password
+        coordinates: root.center
+      success: ->
+        root.updating = false
+        login email, password
+      failure: (e) ->
+        root.updating = false
+        setBusy false
+        console.log "Sign up failed: #{e}"
+        errors = @responseJSON?.errors
+        if errors?.length
+          setMessage errors.join(" ")
+        else
+          setMessage "Could not create the account. Check your connection and try again."
+    return
+
   login=(email, password) ->
     email = "markpoon@me.com" if email == ""
     password = "some phrase" if password == ""
@@ -704,7 +740,8 @@ document.addEventListener "DOMContentLoaded", ->
           return if root.updating
           login(document.querySelector("#loginEmail").value.trim(), document.querySelector("#loginPassword").value)
         document.querySelector("#signupButton").addEventListener "click", ->
-          setMessage "Sign up isn't available yet. Leave both fields blank to try the demo.", "info"
+          return if root.updating
+          signup(document.querySelector("#loginEmail").value.trim(), document.querySelector("#loginPassword").value)
       failure:(e)->
         console.log "Failed to Load Login partial, error: #{e}"
       

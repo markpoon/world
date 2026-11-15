@@ -10,5 +10,8 @@ WORKDIR /app
 COPY Gemfile Gemfile.lock ./
 RUN gem install bundler:1.17.2 && bundle install --jobs 4
 COPY . .
-RUN bundle exec ruby lib/precompile_coffee.rb
+# Compile CoffeeScript at build time (fast first page load). Build with
+# PRECOMPILE_JS=0 to skip it, so development-mode live compiling still works.
+ARG PRECOMPILE_JS=1
+RUN if [ "$PRECOMPILE_JS" = "1" ]; then bundle exec ruby lib/precompile_coffee.rb; fi
 CMD ["sh", "-c", "bundle exec puma -w 0 -t 1:5 -p ${PORT:-10000} -e ${RACK_ENV:-production} config.ru"]

@@ -1,4 +1,6 @@
+require "./lib/app_env"
 require "sinatra/base"
+require "json"
 require "net/http"
 require "uri"
 require "bigdecimal"
@@ -8,6 +10,7 @@ require "data_mapper"
 
 require "./lib/mongoid_compat"
 require "./models/models.rb"
+require "./lib/world_generator"
 require "./lib/seed"
 require "./controllers/controllers.rb"
 
@@ -21,6 +24,11 @@ class Sphere < Sinatra::Base
   enable :inline_templates  
   helpers AuthorizationHelpers
 
+  # Error pages: full stack traces only when SHOW_ERRORS is on (local development
+  # by default, never on a public host unless asked); otherwise the generic 500 page.
+  set :show_exceptions, AppEnv.show_errors?
+  set :dump_errors, true # always log errors to stderr (Render's log viewer)
+
   # Versioned asset URLs (/css/style.css?v=<mtime>) so browsers, especially
   # iOS Safari, fetch new CSS/JS after a deploy instead of reusing a stale copy.
   helpers do
@@ -31,17 +39,10 @@ class Sphere < Sinatra::Base
   end
 
   configure :development do
-    register Sinatra::Reloader
+    register Sinatra::Reloader if AppEnv.reload_code?
 
     Bundler.require(:development)
     DataMapper.setup(:default, (ENV['DATABASE_URL'] || "sqlite3://#{Dir.pwd}/dev.db").sub(/\Apostgresql:/, 'postgres:'))
-
-    # interactive debugger endpoint: never expose it on a public host (Render sets RENDER)
-    unless ENV['RENDER']
-      get '/binding' do
-        Binding.pry
-      end
-    end
   end
 
   configure :production do
@@ -49,9 +50,22 @@ class Sphere < Sinatra::Base
     DataMapper.setup(:default, (ENV['DATABASE_URL'] || 'postgres://localhost/world').sub(/\Apostgresql:/, 'postgres:'))
   end
 
+  # Debug-only routes (flag ENABLE_DEBUG_ROUTES): a Pry console hook and a route
+  # that raises, for checking how errors look in the current mode.
+  if AppEnv.debug_routes?
+    get '/binding' do
+      halt 501, 'Pry is not installed in this mode' unless defined?(Pry)
+      Binding.pry
+    end
+    get '/debug/error' do
+      raise 'Deliberate test error from /debug/error'
+    end
+  end
+
   MongoidCompat.finalize!
   DataMapper.finalize.auto_upgrade!
-  Seed.demo_user! if ENV['SEED_DEMO_USER'] == '1'
+  puts "Cosmic Dream starting: #{AppEnv.summary}"
+  Seed.demo_user! if AppEnv.seed_demo_user?
 
   before "/user/*" do
     content_type 'application/json'
@@ -61,8 +75,73 @@ class Sphere < Sinatra::Base
     haml :index
   end
 
-  put '/user/new' do
-    user = User.where(email: @params[:email]).exists?
+  # --- Sign up -------------------------------------------------------------
+  EMAIL_FORMAT = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
+  SIGNUP_LIMIT  = 10   # accounts/lookups per network address...
+  SIGNUP_WINDOW = 3600 # ...per hour
+  SIGNUP_LOG    = {}
+  THROTTLE_LOCK = Mutex.new
+  CREATE_LOCK   = Mutex.new
+
+  helpers do
+    def json_body
+      request.body.rewind
+      data = JSON.parse(request.body.read.to_s)
+      data.is_a?(Hash) ? data : {}
+    rescue JSON::ParserError
+      nil
+    end
+
+    def signup_throttled?
+      now = Time.now.to_i
+      THROTTLE_LOCK.synchronize do
+        recent = (SIGNUP_LOG[request.ip] || []).select { |t| now - t < SIGNUP_WINDOW }
+        SIGNUP_LOG[request.ip] = recent
+        return true if recent.size >= SIGNUP_LIMIT
+        recent << now
+        false
+      end
+    end
+
+    # [lng, lat] from the browser, or the default start area when missing/invalid
+    def signup_coordinates(raw)
+      lng, lat = Array(raw).first(2).map { |v| Float(v) rescue nil }
+      return Seed::CENTER unless lng && lat && lng.between?(-180, 180) && lat.between?(-85, 85)
+      [lng, lat]
+    end
+
+    def fail_with(code, *messages)
+      halt code, { errors: messages }.to_json
+    end
+  end
+
+  post '/user/signup' do
+    data = json_body
+    fail_with 400, 'Invalid request.' if data.nil?
+    email    = User.normalize_email(data['email'])
+    password = data['password'].to_s
+    errors = []
+    errors << 'Enter a valid email address.' unless email.length <= 254 && email =~ EMAIL_FORMAT
+    errors << 'Your passphrase needs at least 8 characters.' if password.length < 8
+    errors << 'Your passphrase is too long (128 characters at most).' if password.length > 128
+    halt 422, { errors: errors }.to_json unless errors.empty?
+    fail_with 429, 'Too many sign-ups from your network. Please try again later.' if signup_throttled?
+
+    lng, lat = signup_coordinates(data['coordinates'])
+    World.ensure_area(lng, lat, 6)
+    tile = World.tile_at(lng, lat)
+    fail_with 500, 'Could not find a starting position. Please try again.' unless tile
+
+    user = nil
+    CREATE_LOCK.synchronize do # check + create together, so two requests can't claim one email
+      fail_with 422, 'That email is already registered.' if User.first(email: email)
+      user = User.new(email: email, password: password)
+      user.location = tile
+      user.save
+    end
+    fail_with 500, 'Could not create your account. Please try again.' unless user.saved?
+    status 201
+    { id: user.id, email: user.email }.to_json
   end
 
   get '/user/login' do
@@ -92,11 +171,29 @@ class Sphere < Sinatra::Base
   end
 
   get '/user/sight' do
-    user = User.find(session[:user])
+    user = session[:user] && User.get(session[:user])
+    halt 401, { error: 'Not logged in.' }.to_json unless user
     user.sight.to_json
   end
 
+  # What mode is the app in? Non-sensitive, so it can be left on in any mode.
+  get '/status' do
+    content_type 'application/json'
+    {
+      app: 'cosmic-dream',
+      environment: AppEnv.name,
+      on_render: AppEnv.on_render?,
+      flags: AppEnv.flags,
+      ruby: RUBY_VERSION,
+      commit: ENV['RENDER_GIT_COMMIT'].to_s[0, 7],
+      database: DataMapper.repository.adapter.class.name.split('::').last.sub('Adapter', '').downcase,
+      tiles: Location.count,
+      buildings: Place.count
+    }.to_json
+  end
+
   get '/menus' do
+    halt 404 unless params["path"] == "login"
     @options = params["path"].intern
     haml :menu, {:layout => false}
   end
@@ -116,7 +213,16 @@ class Sphere < Sinatra::Base
   end
 
   not_found{haml :'404'}
-  error{@error = request.env['sinatra_error']; haml :'500'}
+  # Reached only when show_exceptions is off (see SHOW_ERRORS): never show the
+  # exception to visitors; it is already in the server log.
+  error do
+    if request.path_info.start_with?('/user/')
+      content_type 'application/json'
+      { error: 'Something went wrong.' }.to_json
+    else
+      haml :'500'
+    end
+  end
 end
 
 __END__
@@ -156,7 +262,7 @@ __END__
 -# managers recognise it. Fields may stay blank: the demo account is used then.
 %form#loginForm{action: "#", method: "post", novalidate: true}
   %h1 Cosmic Dream
-  %p.hint Demo: leave both fields blank and tap Login.
+  %p.hint To try the demo, leave both fields blank and tap Login. To play with your own account, enter an email and a passphrase (8+ characters) and tap Sign Up.
   %label.sr-only{for: "loginEmail"} Email
   %input#loginEmail{type: "email", name: "email", placeholder: "you@example.com", autocomplete: "username", autocapitalize: "none", autocorrect: "off", spellcheck: "false", inputmode: "email", enterkeyhint: "next"}
   %label.sr-only{for: "loginPassword"} Passphrase
@@ -174,7 +280,7 @@ __END__
   
 @@500
 .warning
-  %h1 500
+  %h1 Something went wrong
   %hr
-  %p @error.message
+  %p Sorry, an unexpected error occurred. Please try again in a moment.
   %hr

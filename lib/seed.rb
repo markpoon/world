@@ -7,28 +7,11 @@ module Seed
   DEMO_EMAIL    = ENV.fetch('DEMO_EMAIL', 'markpoon@me.com')
   DEMO_PASSWORD = ENV.fetch('DEMO_PASSWORD', 'some phrase')
   # where the browser client centers its map (root.center in views/script.coffee)
-  CENTER = [-79.708, 43.607]
-  RADIUS = 5 # tiles in each direction; matches a user's default vision
-
-  # a small hand-made starting map, since WorldFactory needs the Overpass API
-  def self.terrain_for(x, y)
-    return Plain if x.abs <= 1 && y.abs <= 1 # keep the start tile safe to walk on
-    case (x * 7 + y * 13) % 11
-    when 0, 1 then Forest
-    when 2    then Hill
-    when 3    then Lake
-    else Plain
-    end
-  end
+  CENTER = [World::SPAWN[0] / World::SCALE.to_f, World::SPAWN[1] / World::SCALE.to_f]
+  RADIUS = 6 # tiles in each direction (a user sees 5 by default)
 
   def self.starting_map!
-    (-RADIUS..RADIUS).each do |x|
-      (-RADIUS..RADIUS).each do |y|
-        coordinates = [(CENTER[0] + x * 0.001).round(3), (CENTER[1] + y * 0.001).round(3)]
-        next if Location.first(cx: coordinates[0], cy: coordinates[1])
-        terrain_for(x, y).create(coordinates: coordinates)
-      end
-    end
+    World.ensure_area(*CENTER, RADIUS)
   end
 
   def self.demo_user!
@@ -36,7 +19,7 @@ module Seed
     return existing if existing
     starting_map!
     user = User.new(email: DEMO_EMAIL, password: DEMO_PASSWORD)
-    user.location = Location.first(cx: CENTER[0].round(3), cy: CENTER[1].round(3))
+    user.location = World.tile_at(*CENTER)
     user.save
     puts "Seed: created demo user #{DEMO_EMAIL} (#{Location.count} locations, #{Character.count} characters)"
     user

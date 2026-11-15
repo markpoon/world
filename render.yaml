@@ -11,6 +11,14 @@ services:
       # match what the login screen sends when both fields are blank)
       - key: SEED_DEMO_USER
         value: "1"
+      # Explicit feature flags (see lib/app_env.rb). Off on a public host: no Pry
+      # console routes, no stack traces in error pages, no code reloading.
+      - key: ENABLE_DEBUG_ROUTES
+        value: "false"
+      - key: SHOW_ERRORS
+        value: "false"
+      - key: RELOAD_CODE
+        value: "false"
       - key: SESSION_SECRET
         generateValue: true
       - key: DATABASE_URL

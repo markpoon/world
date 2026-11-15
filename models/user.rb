@@ -34,21 +34,43 @@ class User
     # Pony.mail(to: self.email, subject: "Welcome to the Cosmic Dream #{self.email}", body: "Don't forget that your password is \"#{@password}\"")
     self.characters.create!(location: nearby_location)
   end
+  # Emails are case-insensitive: store them trimmed and lower-cased.
+  def self.normalize_email(email); email.to_s.strip.downcase; end
+  def email=(value); super(User.normalize_email(value)); end
+
+  # New passwords are hashed with bcrypt (slow, salted, built for passwords).
+  # `salt` stays as a column for accounts created before the upgrade.
+  BCRYPT_COST = 10
   def password=(pass)
     @password = pass
     self.salt = User.random_string(15) unless self.salt
-    self.hashed_password = User.encrypt(@password, self.salt)
+    self.hashed_password = BCrypt::Password.create(pass.to_s, cost: BCRYPT_COST).to_s
   end
+  def bcrypt_hash?; hashed_password.to_s.start_with?('$2'); end
+
   def self.authenticate(email, pass)
-    u = User.find_by(email: email)
+    u = User.find_by(email: User.normalize_email(email))
     return nil if u.nil?
-    return u if User.encrypt(pass, u.salt) == u.hashed_password
-    nil
+    pass = pass.to_s
+    if u.bcrypt_hash?
+      return (BCrypt::Password.new(u.hashed_password) == pass ? u : nil)
+    end
+    # Accounts from before the bcrypt upgrade: check the old salted SHA-256,
+    # and move the account to bcrypt as soon as the password is proven.
+    return nil unless User.encrypt(pass, u.salt.to_s) == u.hashed_password
+    u.password = pass
+    u.save
+    u
   end
   def sight
+    # make sure the map around the player (and their characters) exists
+    World.ensure_area(*location.coordinates, vision + 1)
+    characters.each { |c| World.ensure_area(*c.location.coordinates, (c.vision || 1) + 1) if c.location }
     response = {}
     response["users"] = [self.as_json]
-    response["locations"] = (self.characters.collect(&:sight) << super).flatten.compact.uniq.as_json
+    visible = (self.characters.collect(&:sight) << super).flatten.compact.uniq
+    World.preload_places(visible)
+    response["locations"] = visible.as_json
     response["characters"] = self.characters.collect(&:as_json)
     # sectors = (self.characters.collect(&:location).flatten.compact.collect(&:sector).flatten.compact << self.location.sector).uniq
     # locations = sectors.collect(&:locations).flatten.compact

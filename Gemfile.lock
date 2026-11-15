@@ -136,6 +136,7 @@ PLATFORMS
 
 DEPENDENCIES
   activesupport (~> 5.2)
+  bcrypt
   coffee-script
   data_mapper (~> 1.2)
   dm-postgres-adapter

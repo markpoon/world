@@ -10,6 +10,7 @@ class Place
   def portrait
     self.class.to_s
   end
+  def name; self.class.to_s; end
   def create_event(target_location=nil)
     self.reload if self.location == nil
     if target_location.nil? and !self.class.event_location.nil?

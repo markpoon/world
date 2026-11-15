@@ -15,8 +15,21 @@ class Location
 
   PUBLIC_JSON = {:except => [:faction_id, :sector_id, :_id], :methods => [:_type, :c], :include => {:places => Place::PUBLIC_JSON}}
 
+  # set by World.preload_places so a whole map is serialized without per-tile queries
+  attr_writer :preloaded_places
+
+  def buildings
+    @preloaded_places || places.map { |place| place.class.get(place.id) }
+  end
+
   def as_json(options = PUBLIC_JSON)
-    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+    options = options.dup
+    place_options = options.delete(:include)
+    json = super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+    if place_options && !(list = buildings).empty?
+      json['places'] = list.map { |place| place.as_json(place_options[:places]) }
+    end
+    json
   end
 end
 

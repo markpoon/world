@@ -1,4 +1,4 @@
-if settings.development?
+if AppEnv.development?
   require "sinatra/reloader"
   require 'pry'
   def game_models;[Sector, Location, Place, Event, User, Character, Journey, Family, Faction, Objective]; end
