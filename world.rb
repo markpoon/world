@@ -33,7 +33,7 @@ class Sphere < Sinatra::Base
 
   configure :production do
     Bundler.require(:production)
-    DataMapper.setup(:default, ENV['DATABASE_URL'] || 'postgres://localhost/world')
+    DataMapper.setup(:default, (ENV['DATABASE_URL'] || 'postgres://localhost/world').sub(/\Apostgresql:/, 'postgres:'))
   end
 
   MongoidCompat.finalize!
