@@ -11,4 +11,4 @@ COPY Gemfile Gemfile.lock ./
 RUN gem install bundler:1.17.2 && bundle config --local without development && bundle install --jobs 4
 COPY . .
 ENV RACK_ENV=production
-CMD bundle exec puma -p ${PORT:-10000} -e production config.ru
+CMD ["sh", "-c", "bundle exec puma -w 0 -t 1:5 -p ${PORT:-10000} -e production config.ru"]
