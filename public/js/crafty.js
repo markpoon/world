@@ -5316,10 +5316,13 @@ Crafty.extend({
                 var meta = document.createElement("meta"),
                     head = document.getElementsByTagName("HEAD")[0];
 
-                //stop mobile zooming and scrolling
-                meta.setAttribute("name", "viewport");
-                meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
-                head.appendChild(meta);
+                // LOCAL PATCH: only add Crafty's zoom-locking viewport tag when the
+                // page has none of its own (ours keeps pinch-zoom available).
+                if (!document.querySelector('meta[name="viewport"]')) {
+                    meta.setAttribute("name", "viewport");
+                    meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+                    head.appendChild(meta);
+                }
 
                 //hide the address bar
                 meta = document.createElement("meta");
@@ -5329,6 +5332,9 @@ Crafty.extend({
                 setTimeout(function () { window.scrollTo(0, 1); }, 0);
 
                 Crafty.addEvent(this, window, "touchmove", function (e) {
+                    // LOCAL PATCH: leave touch scrolling alone inside the HTML UI
+                    // overlay (#ui), e.g. a login form pushed up by the keyboard.
+                    if (e.target && e.target.closest && e.target.closest("#ui")) return;
                     e.preventDefault();
                 });
 

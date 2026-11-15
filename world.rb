@@ -21,6 +21,15 @@ class Sphere < Sinatra::Base
   enable :inline_templates  
   helpers AuthorizationHelpers
 
+  # Versioned asset URLs (/css/style.css?v=<mtime>) so browsers, especially
+  # iOS Safari, fetch new CSS/JS after a deploy instead of reusing a stale copy.
+  helpers do
+    def asset(path)
+      file = File.join(settings.public_folder, path)
+      File.exist?(file) ? "#{path}?v=#{File.mtime(file).to_i}" : path
+    end
+  end
+
   configure :development do
     register Sinatra::Reloader
 
@@ -117,18 +126,25 @@ __END__
 
 @@layout
 !!! 5
-%html
+%html{lang: "en"}
   %head
-    %title Cosmic - Geolocation game written in coffeescript, lovely.io, crafty.js, backend in ruby, sinatra, mongodb
-    %meta{name: "viewport", content: "width=device-width,user-scalable=0,initial-scale=1.0,minimum-scale=0.5,maximum-scale=1.0"}
-    %link{href: "css/style.css", rel: "stylesheet"}
+    %meta{charset: "utf-8"}
+    %title Cosmic Dream
+    -# No maximum-scale / user-scalable: pinch-zoom stays available (accessibility).
+    -# viewport-fit=cover lets the page use the full screen on notched iPhones.
+    %meta{name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover"}
+    %meta{name: "color-scheme", content: "dark"}
+    %meta{name: "theme-color", content: "#000000"}
+    %meta{name: "description", content: "Cosmic Dream: a geolocation-based, turn-based RPG in the browser."}
+    %link{href: asset("/css/style.css"), rel: "stylesheet"}
   %body
     = yield
-  %footer
-  %script{src: "/js/underscore-min.js", type: "text/javascript"}  
-  %script{src: "/js/crafty.js", type: "text/javascript"}
-  %script{src: "/js/isometric2.js", type: "text/javascript"}
-  %script{src: "/js/script.js", type: "text/javascript"}
+    %noscript
+      #noscript This game needs JavaScript. Please enable it and reload the page.
+    %script{src: asset("/js/underscore-min.js")}
+    %script{src: asset("/js/crafty.js")}
+    %script{src: asset("/js/isometric2.js")}
+    %script{src: asset("/js/script.js")}
 
 @@menu
 #menuContainer
@@ -136,12 +152,19 @@ __END__
     = render 'haml', @options
 
 @@login
-Demo: no email or password
-%input{:type => "text", :id =>"loginEmail", :name => "email", :placeholder => "Your@Email.com"}
-%input{:type => "text", :id =>"loginPassword", :name => "password", :placeholder => "Pass Phrase"}
-%button{:id =>"loginButton"} Login
-%button{:id =>"loginButton"} Sign Up
-  
+-# A real <form>, so the phone keyboard's "Go" key submits it and password
+-# managers recognise it. Fields may stay blank: the demo account is used then.
+%form#loginForm{action: "#", method: "post", novalidate: true}
+  %h1 Cosmic Dream
+  %p.hint Demo: leave both fields blank and tap Login.
+  %label.sr-only{for: "loginEmail"} Email
+  %input#loginEmail{type: "email", name: "email", placeholder: "you@example.com", autocomplete: "username", autocapitalize: "none", autocorrect: "off", spellcheck: "false", inputmode: "email", enterkeyhint: "next"}
+  %label.sr-only{for: "loginPassword"} Passphrase
+  %input#loginPassword{type: "password", name: "password", placeholder: "Passphrase", autocomplete: "current-password", autocapitalize: "none", autocorrect: "off", spellcheck: "false", enterkeyhint: "go"}
+  %button#loginButton{type: "submit"} Login
+  %button#signupButton{type: "button"} Sign Up
+  %p#loginMessage{role: "status", aria: {live: "polite"}}
+
 @@404
 .warning
   %h1 404

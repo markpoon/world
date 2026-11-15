@@ -11,12 +11,28 @@ root.authenticated= false # logged in?
 
 ###
 
+# Browser support: everything below needs fetch, URLSearchParams and
+# Promise.finally (Safari 11.1+, Chrome 63+, Firefox 58+, Edge 79+). Older
+# browsers get a clear message instead of a blank page.
+unless window.fetch? and window.URLSearchParams? and window.Promise? and Promise::finally? and Array.from?
+  document.addEventListener "DOMContentLoaded", ->
+    notice = document.createElement "div"
+    notice.id = "unsupported"
+    notice.setAttribute "role", "alert"
+    notice.textContent = "This browser is too old to run Cosmic Dream. Please update Safari, Chrome, Firefox or Edge."
+    document.body.appendChild notice
+  return
+
 # Small replacements for the Lovely.io modules this file used to load from
 # cdn.lovely.io (no longer online): DOM lookup, ajax and fades.
 $ = (selector) -> Array.from document.querySelectorAll(selector)
 
+prefersReducedMotion = ->
+  window.matchMedia? and window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
 fade = (element, direction, done) ->
   return done?() unless element
+  return done?() if prefersReducedMotion()
   element.style.transition = "opacity 0.4s"
   element.style.opacity = if direction is "in" then 0 else 1
   requestAnimationFrame ->
@@ -43,6 +59,8 @@ ajax =
 
 document.addEventListener "DOMContentLoaded", ->
   Crafty.init()
+  window.addEventListener "orientationchange", ->
+    setTimeout (-> Crafty.viewport.reload?()), 300
   Crafty.canvas.init()
 
   Crafty.c "Camera",
@@ -243,7 +261,7 @@ document.addEventListener "DOMContentLoaded", ->
           console.log "you should display a dialog for foraging"
       for place in ["shack", "house", "farm", "smith", "inn", "academy", "fortress"]
         @onHit place, (obj) ->
-          profile(obj[obj.length-1].obj, "place") unless document.querySelector("#menu")?.children.length
+          profile(obj[obj.length-1].obj, "place") if typeof profile is "function" and not document.querySelector("#menu")
 
   Crafty.c "AStar",
     _compareNode: (node1, node2) ->
@@ -593,25 +611,47 @@ document.addEventListener "DOMContentLoaded", ->
       neck6: [12,16, 1, 1]
       neck7: [13,16, 1, 1]
 
+  # btoa() throws on anything outside Latin-1, so encode as UTF-8 first
+  basicAuth = (email, password) ->
+    "Basic " + btoa(unescape(encodeURIComponent("#{email}:#{password}")))
+
+  setMessage = (text, kind = "error") ->
+    message = document.querySelector("#loginMessage")
+    return unless message
+    message.textContent = text
+    message.className = if kind is "info" then "info" else ""
+
+  setBusy = (busy) ->
+    for button in $("#loginForm button")
+      button.disabled = busy
+    document.querySelector("#loginForm")?.setAttribute "aria-busy", String(busy)
+
   login=(email, password) ->
     email = "markpoon@me.com" if email == ""
     password = "some phrase" if password == ""
     root.updating = true
-    console.log "Signing in with #{email}, #{password} at: #{root.center}"
+    setBusy true
+    setMessage "Signing in...", "info"
+    console.log "Signing in as #{email} at: #{root.center}"
     ajax.get "/user/login",
       params:
         coordinates: center
       headers:
-        Authorization: "Basic "+btoa(email+":"+password)
+        Authorization: basicAuth(email, password)
       success: ->
         console.log "Maps Response Recieved"
         root.authenticated = true
-        menu = document.querySelector("#menuContainer")
-        fade menu, "out", -> menu?.remove()
+        ui = document.querySelector("#ui")
+        fade ui, "out", -> ui?.remove()
         Crafty.scene "main"
         generateTilesWith @responseJSON
       failure: (e)->
         console.log "Failed to Load Maps, error: #{e}"
+        setBusy false
+        if @status is 401
+          setMessage "Wrong email or passphrase."
+        else
+          setMessage "Could not reach the server. Check your connection and try again."
       complete:->
         root.updating = false
     return
@@ -652,23 +692,33 @@ document.addEventListener "DOMContentLoaded", ->
     ajax.get "/menus",
       params: path: "login"
       success: ->
-        stage = document.querySelector("#cr-stage")
-        stage.insertAdjacentHTML "beforeend", @responseText
+        # Mounted on <body>, NOT inside #cr-stage: Crafty cancels every touch
+        # event on its stage, which stops iOS Safari from focusing inputs.
+        ui = document.createElement "div"
+        ui.id = "ui"
+        ui.innerHTML = @responseText
+        document.body.appendChild ui
         fade document.querySelector("#menuContainer"), "in"
-        for button in $("#loginButton")
-          button.addEventListener "click", ->
-            login(document.querySelector("#loginEmail").value, document.querySelector("#loginPassword").value) if center
+        document.querySelector("#loginForm").addEventListener "submit", (e) ->
+          e.preventDefault()
+          return if root.updating
+          login(document.querySelector("#loginEmail").value.trim(), document.querySelector("#loginPassword").value)
+        document.querySelector("#signupButton").addEventListener "click", ->
+          setMessage "Sign up isn't available yet. Leave both fields blank to try the demo.", "info"
       failure:(e)->
         console.log "Failed to Load Login partial, error: #{e}"
       
   BeginWatch= ->
+    unless navigator.geolocation
+      console.log "Geolocation is not available in this browser"
+      return
     console.log "Beginning Watch"
     root.watchPosition = navigator.geolocation.watchPosition hasGeo, noGeo, {enableHighAccuracy:false, timeout:5000, maximumAge: 180}
     return
 
   EndWatch= ->
     console.log "Ending Watch"
-    navigator.geolocation.clearWatch(root.watchPosition) if root.watchPosition
+    navigator.geolocation?.clearWatch(root.watchPosition) if root.watchPosition
     return
       
   hasGeo= (position) ->
