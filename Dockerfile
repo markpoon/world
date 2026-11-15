@@ -1,9 +1,14 @@
-FROM ruby:2.7
-RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev nodejs \
+FROM ruby:2.7-bullseye
+# Debian 11 has moved to the archive mirrors
+RUN sed -i 's|deb.debian.org|archive.debian.org|g; s|security.debian.org|archive.debian.org|g; /bullseye-updates/d' /etc/apt/sources.list 2>/dev/null || true \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get install -y --no-install-recommends libpq-dev postgresql-server-dev-13 \
     && rm -rf /var/lib/apt/lists/*
+# JavaScript runtime for compiling CoffeeScript (ExecJS)
+COPY --from=node:16-bullseye-slim /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 COPY Gemfile Gemfile.lock ./
-RUN bundle config set --local without development && bundle install
+RUN gem install bundler:1.17.2 && bundle config --local without development && bundle install --jobs 4
 COPY . .
 ENV RACK_ENV=production
 CMD bundle exec puma -p ${PORT:-10000} -e production config.ru
