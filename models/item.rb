@@ -50,12 +50,12 @@ module Enchanted
       
   def charge_max
     l = self.durability
-    if self.material == (:wood || :leather)
+    if [:wood, :leather].include?(self.material)
       l *= 2
     else
       l *= 0.7
     end
-    if self.slot == (:finger || :neck || :head)
+    if respond_to?(:slot) and [:finger, :neck, :head].include?(self.slot)
       l *= 1.5
     else
       l *= 0.7
@@ -63,7 +63,7 @@ module Enchanted
     l.round
   end
   def price
-    base_price + (charge/charge_max * 4)
+    base_price + ((charge || 0).to_f / [charge_max, 1].max * 4)
   end
   private
   def use_item; puts "it's magical!"; true; end
@@ -237,9 +237,16 @@ class Equipment < Item
   field :u, as: :equipped, type: Boolean
   
   def equip
-    for item in character.items
-      item.equipped = nil if item.slot == self.slot and items.equipped == true
+    # one equipped item per slot: unequip the others, then equip this one
+    (character ? character.items : []).each do |item|
+      next if item == self
+      if item.respond_to?(:slot) and item.slot == self.slot and item.equipped
+        item.equipped = nil
+        item.save
+      end
     end
+    self.equipped = true
+    save
   end
 end
 

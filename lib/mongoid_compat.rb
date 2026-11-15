@@ -130,12 +130,14 @@ module MongoidCompat
     def embeds_many(name, opts = {})
       child = (opts[:class_name] || name.to_s.singularize.camelize)
       MongoidCompat::PENDING << [:embeds, self, name, child]
+      define_method("#{name}?") { !send(name).empty? } # Mongoid's presence predicate
     end
 
     def has_many(name, opts = {})
       klass = opts[:class_name] || name.to_s.singularize.camelize
       inverse = opts[:inverse_of] || self.name.underscore
       has Infinity, name, klass, child_key: [:"#{inverse}_id"]
+      define_method("#{name}?") { !send(name).empty? }
     end
 
     def has_one(name, opts = {}); end

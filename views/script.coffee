@@ -68,6 +68,8 @@ document.addEventListener "DOMContentLoaded", ->
   Crafty.init()
   window.addEventListener "orientationchange", ->
     setTimeout (-> Crafty.viewport.reload?()), 300
+  window.addEventListener "resize", ->
+    root.camera.set root.player if root.camera and root.player
   Crafty.canvas.init()
 
   Crafty.c "Camera",
@@ -78,8 +80,11 @@ document.addEventListener "DOMContentLoaded", ->
       obj.bind "Moved", (location) ->
         that.set location
     set: (obj) ->
-      Crafty.viewport.x = -obj.x - 64 + Crafty.viewport.width / 2 
-      Crafty.viewport.y = -obj.y + 64  + Crafty.viewport.height / 3
+      # Crafty.viewport.width/height can be 0 on this stage, so use the window size
+      w = window.innerWidth or document.documentElement.clientWidth
+      h = window.innerHeight or document.documentElement.clientHeight
+      Crafty.viewport.x = -obj.x - 64 + w / 2
+      Crafty.viewport.y = -obj.y - 64 + h / 2
     
   Crafty.c "Location",
     _sight: 0
@@ -259,16 +264,14 @@ document.addEventListener "DOMContentLoaded", ->
   Crafty.c "Solid",
     init: ->
       @requires("Collision").collision(new Crafty.polygon([5, 72], [64, 43], [123, 72], [64, 100]))
-      for solid in ["water", "waterfish"]
-        @onHit solid, (obj) ->
-          console.log "You can't walk on water"
-          @cancelSlide()
-      for solid in ["forestmushroom", "forestfruit"]
-        @onHit solid, (obj) ->
-          console.log "you should display a dialog for foraging"
-      for place in ["shack", "house", "farm", "smith", "inn", "academy", "fortress"]
-        @onHit place, (obj) ->
-          profile(obj[obj.length-1].obj, "place") if typeof profile is "function" and not document.querySelector("#menu")
+      # Lake, Sea and Mountain tiles carry the "Blocking" tag (see generateLocations)
+      @onHit "Blocking", (obj) ->
+        return unless @_moving # only while stepping; never undo a placement
+        showToast "You can't go that way."
+        @cancelSlide()
+      # every building carries the "Building" tag (see generatePlaces)
+      @onHit "Building", (obj) ->
+        profile(obj[obj.length-1].obj, "place") unless document.querySelector("#profile")
 
   Crafty.c "AStar",
     _compareNode: (node1, node2) ->
@@ -805,6 +808,72 @@ document.addEventListener "DOMContentLoaded", ->
       when "Lake", "Sea" then random 2 
     return type+(suffix||"")
   
+  # --- Toasts and the building / character panel ----------------------------
+  showToast = (text) ->
+    old = document.querySelector("#toast")
+    old.remove() if old
+    t = document.createElement "div"
+    t.id = "toast"
+    t.setAttribute "role", "status"
+    t.textContent = text
+    document.body.appendChild t
+    setTimeout (-> t.remove()), 1800
+
+  PLACE_INFO =
+    Farm: "A working farm. Crops and livestock are traded here."
+    Shack: "A rough shelter. Someone lives here."
+    House: "A family home."
+    Inn: "Travellers rest here and swap news."
+    Smith: "A forge: tools and weapons are made and repaired here."
+    Hall: "A hall where local leaders meet and trade."
+    Market: "A market. Goods change hands here."
+    Academy: "A school of learning."
+    Fortress: "A fortified keep."
+    Stockpile: "A store of gathered goods."
+
+  closeProfile = ->
+    p = document.querySelector("#profile")
+    p.remove() if p
+
+  # Opens the panel for a building ("place") or a character. Walking onto a
+  # building tile opens it; Close dismisses it.
+  profile = (entity, kind) ->
+    closeProfile()
+    panel = document.createElement "section"
+    panel.id = "profile"
+    panel.setAttribute "role", "dialog"
+    panel.setAttribute "aria-label", "Details"
+    title = document.createElement "h2"
+    body = document.createElement "p"
+    list = document.createElement "dl"
+    if kind is "place"
+      name = entity._type or entity.name or "Building"
+      title.textContent = name
+      body.textContent = PLACE_INFO[name] or "A building."
+      rows = [["Position", "#{entity.mapx}, #{entity.mapy}"]]
+      rows.push ["Resources", "#{entity.rw ? 0} wood, #{entity.rg ? 0} grain, #{entity.rf ? 0} food"] if entity.rw? or entity.rg? or entity.rf?
+    else
+      title.textContent = entity.name or "Traveller"
+      body.textContent = "A character in the world."
+      rows = []
+      rows.push ["Gold", "#{entity.gold}"] if entity.gold?
+      rows.push ["Position", "#{entity.mapx}, #{entity.mapy}"]
+    for [k, v] in rows
+      dt = document.createElement "dt"
+      dt.textContent = k
+      dd = document.createElement "dd"
+      dd.textContent = v
+      list.appendChild dt
+      list.appendChild dd
+    close = document.createElement "button"
+    close.type = "button"
+    close.textContent = "Close"
+    close.addEventListener "click", closeProfile
+    for el in [title, body, list, close]
+      panel.appendChild el
+    document.body.appendChild panel
+    close.focus()
+
   generateTilesWith=(response) ->
     generateLocations response["locations"]
     generateCharacters response["characters"]
@@ -824,7 +893,7 @@ document.addEventListener "DOMContentLoaded", ->
         .areaMap([0, 72], [64, 40], [128, 72], [64, 105])
       for interactive in ["Lake", "Sea", "Mountain"]
         if location._type is interactive
-          t.addComponent "Collision"
+          t.addComponent "Collision, Blocking"
           t.collision(new Crafty.polygon([0, 72], [64, 40], [128, 72], [64, 105]))
       # t.checkvision()
       root.grid.place x, y, 0, t
@@ -838,7 +907,7 @@ document.addEventListener "DOMContentLoaded", ->
       switch place._type
         when "Smith", "Farm", "Hall" then z++
         when "Shack", "House", "Inn" then z=2
-      p = Crafty.e("x#{x}, y#{y}, Text, 2D, DOM, Collision," + componentSuffix(place._type))
+      p = Crafty.e("x#{x}, y#{y}, Text, 2D, DOM, Collision, Building," + componentSuffix(place._type))
         .attr
           mapx: x
           mapy: y
@@ -881,8 +950,10 @@ document.addEventListener "DOMContentLoaded", ->
     return
     
   focusOnCharacter= (character) ->
+    root.player = character
     character.trigger "setControls", character
-    Crafty.e("Camera").camera character
+    root.camera = Crafty.e("Camera")
+    root.camera.camera character
     
   generateUsers=(users) ->
     for user in users

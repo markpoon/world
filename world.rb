@@ -207,11 +207,6 @@ class Sphere < Sinatra::Base
     coffee :isometric2
   end
 
-  get "/js/components.js" do
-    content_type "text/javascript", :charset => 'utf-8'
-    coffee :components
-  end
-
   not_found{haml :'404'}
   # Reached only when show_exceptions is off (see SHOW_ERRORS): never show the
   # exception to visitors; it is already in the server log.

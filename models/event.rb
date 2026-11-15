@@ -19,7 +19,7 @@ module Taskable
     self.tasks 
   end
   def to_s
-    tasks.collect{|task| task.to_s }.join('. ') unless tasks?
+    tasks.collect{|task| task.to_s }.join('. ') if tasks?
   end
     
   def complete
@@ -72,7 +72,8 @@ class Event
     journeys.collect(&:characters).flatten.compact.uniq
   end
   def to_s
-    reply = ["At #{self.location.class}#{self.location.coordinates}, a #{self.class} event is occuring"]
+    where = location ? "#{location.class}#{location.coordinates}" : "an unknown place"
+    reply = ["At #{where}, a #{self.class} event is occuring"]
     unless tasks.empty?
       reply << "it has #{self.tasks.count} tasks:"
       reply << tasks.collect(&:to_s)
@@ -117,8 +118,8 @@ end
   
 class Travellers < Wild
   after_initialize do
-    if target.nil?
-      self.target = self.location.sector.locations.sample
+    if target.nil? and location and location.sector
+      self.target = location.sector.locations.sample
     end
   end
   after_update do

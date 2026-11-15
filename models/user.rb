@@ -12,7 +12,17 @@ class User
   field :s, as: :salt, type: String
   field :h, as: :hashed_password, type: String
   
-  validates_presence_of :location, :email, :salt, :hashed_password
+  # Real validations (the Mongoid-era declarations are no-ops under DataMapper):
+  # an account always has a start tile, an email and a password hash.
+  [[:location, ->(u) { u.location }], [:email, ->(u) { u.email }],
+   [:hashed_password, ->(u) { u.hashed_password }]].each do |attr, getter|
+    validates_with_block(attr) do
+      getter.call(self).to_s.empty? && !getter.call(self).respond_to?(:id) ? [false, "#{attr} must not be blank"] : true
+    end
+  end
+  validates_with_block(:email) do
+    User.normalize_email(email) =~ /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/ ? true : [false, 'email is not valid']
+  end
   
   field :n, as: :energy, type: Integer, default: ->{random 15, 30}
   field :v, as: :vision, type: Integer
