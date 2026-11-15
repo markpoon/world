@@ -10,5 +10,6 @@ WORKDIR /app
 COPY Gemfile Gemfile.lock ./
 RUN gem install bundler:1.17.2 && bundle config --local without development && bundle install --jobs 4
 COPY . .
+RUN bundle exec ruby lib/precompile_coffee.rb
 ENV RACK_ENV=production
 CMD ["sh", "-c", "bundle exec puma -w 0 -t 1:5 -p ${PORT:-10000} -e production config.ru"]

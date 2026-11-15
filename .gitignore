@@ -4,3 +4,6 @@ style.scss
 vendor/
 .bundle/
 *.db
+public/js/script.js
+public/js/isometric2.js
+public/js/components.js
