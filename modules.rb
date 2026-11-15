@@ -9,7 +9,7 @@ if settings.development?
       i.all.delete
       puts "#{i} was #{j}, now #{i.count} "
     end
-    omnicient
+    omniscient
     seed
   end
   def omniscient
@@ -19,7 +19,7 @@ if settings.development?
     nil
   end
   def seed
-    User.create(email:"markpoon@me.com", password:"password", coordinates:[-79.7044534523, 43.605254354])
+    Seed.demo_user!
   end
 end  
 

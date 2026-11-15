@@ -8,6 +8,7 @@ require "data_mapper"
 
 require "./lib/mongoid_compat"
 require "./models/models.rb"
+require "./lib/seed"
 require "./controllers/controllers.rb"
 
 module AuthorizationHelpers
@@ -41,6 +42,7 @@ class Sphere < Sinatra::Base
 
   MongoidCompat.finalize!
   DataMapper.finalize.auto_upgrade!
+  Seed.demo_user! if ENV['SEED_DEMO_USER'] == '1'
 
   before "/user/*" do
     content_type 'application/json'

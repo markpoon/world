@@ -7,6 +7,10 @@ services:
     envVars:
       - key: RACK_ENV
         value: development
+      # create the demo user on boot (credentials default to lib/seed.rb, which
+      # match what the login screen sends when both fields are blank)
+      - key: SEED_DEMO_USER
+        value: "1"
       - key: SESSION_SECRET
         generateValue: true
       - key: DATABASE_URL
