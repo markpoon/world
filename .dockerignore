@@ -1,0 +1,6 @@
+vendor
+.bundle
+.git
+*.db
+tmp
+.sass-cache

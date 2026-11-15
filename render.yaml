@@ -1,14 +1,10 @@
 services:
   - type: web
     name: world
-    runtime: ruby
+    runtime: docker
     plan: free
-    buildCommand: bundle config set --local without development && bundle install
-    startCommand: bundle exec puma -p $PORT -e production config.ru
     healthCheckPath: /
     envVars:
-      - key: RUBY_VERSION
-        value: 2.7.8
       - key: RACK_ENV
         value: production
       - key: SESSION_SECRET
