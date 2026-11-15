@@ -13,7 +13,7 @@ class Location
     self.class.intern unless self.class == Location
   end
 
-  PUBLIC_JSON = {:except => [:faction_id, :sector_id, :_id], :methods => :_type, :include => {:places => Place::PUBLIC_JSON}}
+  PUBLIC_JSON = {:except => [:faction_id, :sector_id, :_id], :methods => [:_type, :c], :include => {:places => Place::PUBLIC_JSON}}
 
   def as_json(options = PUBLIC_JSON)
     super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}

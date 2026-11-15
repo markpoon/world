@@ -120,7 +120,6 @@ __END__
   %body
     = yield
   %footer
-  %script{src: "http://cdn.lovely.io/core.js", type: "text/javascript"}
   %script{src: "/js/underscore-min.js", type: "text/javascript"}  
   %script{src: "/js/crafty.js", type: "text/javascript"}
   %script{src: "/js/isometric2.js", type: "text/javascript"}

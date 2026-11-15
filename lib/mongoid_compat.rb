@@ -57,14 +57,32 @@ module MongoidCompat
       end
     end
     def _id; id; end
+    def _type; self.class.name; end
     def persisted?; saved?; end
     def new_record?; new?; end
     def inc(field, amount = 1)
       update(field => (send(field) || 0) + amount)
     end
-    def as_json(options = {})
+    # Translate Mongoid-style serializer options to dm-serializer's, and fall
+    # back to the model's PUBLIC_JSON when called with nil (Array#as_json does).
+    def as_json(options = nil)
+      options ||= self.class.const_defined?(:PUBLIC_JSON) ? self.class::PUBLIC_JSON : {}
       options = options.dup
-      options[:only] = Array(options[:only]).map { |k| k == :_id ? :id : k }
+      methods = Array(options[:methods])
+      [:only, :except].each do |key|
+        next unless options[key]
+        names = Array(options[key]).map { |k| k == :_id ? :id : k }
+        if key == :only
+          extra, names = names.partition { |k| !self.class.properties.named?(k) && respond_to?(k) }
+          methods |= extra
+        end
+        options[key] = names
+      end
+      options.delete(:only) if options[:only] && options[:only].empty?
+      options[:methods] = methods unless methods.empty?
+      if (inc = options.delete(:include))
+        options[:relationships] = inc
+      end
       super(options)
     end
   end

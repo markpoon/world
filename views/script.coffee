@@ -10,7 +10,38 @@ root.authenticated= false # logged in?
                           C O S M I C  D R E A M
 
 ###
-Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1.0.3", "glyph-icons-1.0.2", "killie-1.0.0"], ($, fx, ui, ajax, dnd) ->
+
+# Small replacements for the Lovely.io modules this file used to load from
+# cdn.lovely.io (no longer online): DOM lookup, ajax and fades.
+$ = (selector) -> Array.from document.querySelectorAll(selector)
+
+fade = (element, direction, done) ->
+  return done?() unless element
+  element.style.transition = "opacity 0.4s"
+  element.style.opacity = if direction is "in" then 0 else 1
+  requestAnimationFrame ->
+    element.style.opacity = if direction is "in" then 1 else 0
+    setTimeout (-> done?()), 400
+
+ajax =
+  get: (url, options = {}) ->
+    query = new URLSearchParams()
+    for key, value of (options.params or {})
+      query.append key, (if Array.isArray(value) then value.join(",") else value)
+    fullUrl = if query.toString() then "#{url}?#{query}" else url
+    fetch(fullUrl, headers: options.headers or {}, credentials: "same-origin")
+      .then (response) ->
+        response.text().then (text) ->
+          context = responseText: text, status: response.status
+          try context.responseJSON = JSON.parse(text) catch then context.responseJSON = null
+          if response.ok
+            options.success?.call context
+          else
+            options.failure?.call context, "HTTP #{response.status}"
+      .catch (error) -> options.failure?.call {}, error
+      .finally -> options.complete?()
+
+document.addEventListener "DOMContentLoaded", ->
   Crafty.init()
   Crafty.canvas.init()
 
@@ -124,7 +155,7 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
         [x, y] = [@mapx, @mapy]
         for num in [[x, y+1],[x, y-1],[x+1, y],[x-1, y]]
           for tile in $(".x"+num[0]+".y"+num[1])
-            t = Crafty(parseInt((tile._.id).slice(3))) 
+            t = Crafty(parseInt((tile.id).slice(3))) 
             t.trigger "TerrainControls", @
             @_charcontrols.push t
       
@@ -212,7 +243,7 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
           console.log "you should display a dialog for foraging"
       for place in ["shack", "house", "farm", "smith", "inn", "academy", "fortress"]
         @onHit place, (obj) ->
-          profile(obj[obj.length-1].obj, "place") unless "menu".children().length
+          profile(obj[obj.length-1].obj, "place") unless document.querySelector("#menu")?.children.length
 
   Crafty.c "AStar",
     _compareNode: (node1, node2) ->
@@ -575,7 +606,8 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
       success: ->
         console.log "Maps Response Recieved"
         root.authenticated = true
-        "#menu".remove().fade("out")
+        menu = document.querySelector("#menuContainer")
+        fade menu, "out", -> menu?.remove()
         Crafty.scene "main"
         generateTilesWith @responseJSON
       failure: (e)->
@@ -587,10 +619,13 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
   Crafty.scene "main", ->
     console.log "Main Scene"
     root.grid = Crafty.isometric2.init(128)
-    "input".onFocus ->
+    # stop the arrow/WASD controls from firing while typing in a text box
+    document.addEventListener "focusin", (e) ->
+      return unless e.target.tagName is "INPUT"
       Crafty.removeEvent @, "keydown", Crafty.keyboardDispatch
       Crafty.removeEvent @, "keyup", Crafty.keyboardDispatch
-    "input".onBlur ->
+    document.addEventListener "focusout", (e) ->
+      return unless e.target.tagName is "INPUT"
       Crafty.addEvent @, "keydown", Crafty.keyboardDispatch
       Crafty.addEvent @, "keyup", Crafty.keyboardDispatch
 
@@ -617,9 +652,12 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
     ajax.get "/menus",
       params: path: "login"
       success: ->
-        "#cr-stage".append(@responseText).fade("in")
-        $("#loginButton").onClick ->
-          login($('#loginEmail')[0]._.value, $('#loginPassword')[0]._.value) if center
+        stage = document.querySelector("#cr-stage")
+        stage.insertAdjacentHTML "beforeend", @responseText
+        fade document.querySelector("#menuContainer"), "in"
+        for button in $("#loginButton")
+          button.addEventListener "click", ->
+            login(document.querySelector("#loginEmail").value, document.querySelector("#loginPassword").value) if center
       failure:(e)->
         console.log "Failed to Load Login partial, error: #{e}"
       
@@ -800,7 +838,7 @@ Lovely ["dom-1.2.0", "fx-1.0.3", "ui-2.0.1", "ajax-1.1.2", "dnd-1.0.1", "sugar-1
   toggleVisibility= (selectedtile, delta) ->
     for tile in selectedtile
       for entry in $(tile)
-        e = Crafty(parseInt((entry._.id).slice(3)))
+        e = Crafty(parseInt((entry.id).slice(3)))
         e.sight += delta
         e.trigger "checkforhide"
 

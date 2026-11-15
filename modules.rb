@@ -90,6 +90,7 @@ module Coordinates
   def coordinates
     [cx, cy]
   end
+  alias_method :c, :coordinates
   def coordinates=(coordinates)
     self.cx, self.cy = coordinates.to_d(check_decimal(self.class)).to_f
   end
