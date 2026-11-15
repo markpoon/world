@@ -29,7 +29,7 @@ Lovely ["dom-1.2.0"], ($) ->
         c._charcontrols = []
     checkvision: () ->
       @bind "checkforhide", ->
-        if @sight < 1 ? (@visible = false) : (@visible = true)
+        @visible = @sight >= 1
         @.draw()
       
   Crafty.c "Place",

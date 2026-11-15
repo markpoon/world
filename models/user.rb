@@ -1,6 +1,6 @@
 
 class User
-  include Mongoid::Document
+  include DataMapper::Resource
   include Entity
   include Targetting
   PUBLIC_JSON = {:only => [:_id, :n, :faction_id], :methods => [:vision, :coordinates]}

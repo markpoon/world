@@ -1,32 +1,29 @@
 source 'https://rubygems.org'
-ruby '2.0.0'
+ruby '>= 2.6', '< 3.0'
 
-gem 'sinatra'
-gem 'sinatra-contrib'
-gem 'unicorn'
-gem 'data_mapper'
-gem 'whenever'
-gem 'coffee-script'
+gem 'sinatra', '~> 1.4'
+gem 'sinatra-contrib', '~> 1.4'
+gem 'rack', '< 2.3'
+gem 'puma', '~> 5.6'
+gem 'haml', '~> 5.2'
 gem 'slim'
+gem 'coffee-script'
+gem 'execjs'
 gem 'sass'
-gem 'compass'
 gem 'json'
-
-group :development do
-  gem 'dm-sqlite-adapter'
-  gem 'pry'
-  gem 'pry-doc'
-  gem 'pry-docmore'
-  gem 'pry-debugger'
-  gem 'pry-rescue'
-  gem 'pry-stack_explorer'
-  gem 'guard'
-  gem 'guard-cucumber'
-  gem 'guard-compass'
-  gem 'guard-coffeescript'
-end
+gem 'activesupport', '~> 5.2'
+gem 'data_mapper', '~> 1.2'
+gem 'dm-types'
+gem 'dm-serializer'
+gem 'dm-timestamps'
+gem 'dm-validations'
+gem 'ffi', '< 1.17'
 
 group :production do
-  gem 'pg'
   gem 'dm-postgres-adapter'
+end
+
+group :development do
+  gem 'pry'
+  gem 'dm-sqlite-adapter'
 end

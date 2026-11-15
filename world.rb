@@ -3,9 +3,10 @@ require "net/http"
 require "uri"
 require "bigdecimal"
 require "set"
-require "modules"
+require "./modules"
 require "data_mapper"
 
+require "./lib/mongoid_compat"
 require "./models/models.rb"
 require "./controllers/controllers.rb"
 
@@ -32,9 +33,10 @@ class Sphere < Sinatra::Base
 
   configure :production do
     Bundler.require(:production)
-    DataMapper.setup(:default, 'postgres://localhost/world')
+    DataMapper.setup(:default, ENV['DATABASE_URL'] || 'postgres://localhost/world')
   end
 
+  MongoidCompat.finalize!
   DataMapper.finalize.auto_upgrade!
 
   before "/user/*" do

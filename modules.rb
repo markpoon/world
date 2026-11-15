@@ -83,19 +83,18 @@ end
 module Coordinates
   def self.included(reciever)
     reciever.class_eval do
-      field :c, as: :coordinates, type: Array
-      validates_uniqueness_of :c, message: "%{value} has already been taken"
-      validates_presence_of :c
+      property :cx, Float, required: false, index: true
+      property :cy, Float, required: false, index: true
     end
+  end
+  def coordinates
+    [cx, cy]
   end
   def coordinates=(coordinates)
-    self.c = coordinates.to_d(check_decimal(self.class)).to_f
+    self.cx, self.cy = coordinates.to_d(check_decimal(self.class)).to_f
   end
   def check_decimal(klass)
-    case klass
-    when *[Location, Place, Plain, Hill, Forest, ForestHill, Mountain, Lake, Sea] then return 3
-    when Sector then return 2
-    end
+    klass <= Sector ? 2 : 3
   end
 end
 

@@ -1,3 +1,6 @@
 .DS_Store
 tmp
-style.scssc
+style.scss
+vendor/
+.bundle/
+*.db

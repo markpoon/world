@@ -1,6 +1,6 @@
 
 class Sector
-  include Mongoid::Document
+  include DataMapper::Resource
   include Coordinates
   has_many :locations
   has_and_belongs_to_many :factions

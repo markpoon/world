@@ -1,1 +1,1 @@
-web: bundle exec bin/puma -p $PORT -e production
+web: bundle exec puma -p ${PORT:-9292} -e ${RACK_ENV:-production} config.ru

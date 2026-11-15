@@ -1,12 +1,12 @@
 class Place
-  include Mongoid::Document
+  include DataMapper::Resource
   include Resources
   include CreatesEvents
   field :s, as: :soldiers, type: Integer
   belongs_to :family
   belongs_to :location
   validates_associated :location
-  belongs_to :owner, inverse_of: :properties, class_name: "Character"
+  belongs_to :owner, inverse_of: :holdings, class_name: "Character"
   def portrait
     self.class.to_s
   end

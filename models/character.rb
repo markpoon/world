@@ -52,7 +52,7 @@ class Stats
     (self.resolve + self.dexterity * 1.618 - (self.injury||0)).round
   end  
   def scratch
-    scratch_max - scratch
+    scratch_max - (attribute_get(:scratch) || 0)
   end
   def wound_max
     (self.stamina * 3 + self.resolve - (self.injury||0 * 1.618)).round
@@ -61,7 +61,7 @@ class Stats
     self.intellegence + self.intuition * 2 + self.resolve
   end
   def energy
-    e||energy_max
+    attribute_get(:energy) || energy_max
   end
   field :st, as: :thirst, type: Integer, default: ->{random 80,100}
   field :su, as: :hunger, type: Integer, default: ->{random 80,100}
@@ -99,7 +99,7 @@ class Character < Stats
   
   belongs_to :user, dependent: :nullify
   
-  has_many :properties, inverse_of: :owner, class_name: "Place"
+  has_many :holdings, inverse_of: :owner, class_name: "Place"
   belongs_to :employed, inverse_of: :employees, class_name: "Place"
   belongs_to :residence, inverse_of: :residents, class_name: "Place"
   

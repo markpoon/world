@@ -104,7 +104,7 @@ class RealmFactory
   def self.populate(place, properties)
     characters = []
     family = place.family = Generate.family({places: [place]})
-    father = Character.new(gender: :male, location: place.location, residence: place, properties: [place])
+    father = Character.new(gender: :male, location: place.location, residence: place, holdings: [place])
     mother = Character.new(gender: :female, location: place.location, residence: place)
     father.spouse = mother
     mother.spouse = father
@@ -119,7 +119,7 @@ class RealmFactory
       children = random 2, 5
     when House
       children = random 0, 3
-      father.properties << properties.shuffle.pop
+      father.holdings << properties.shuffle.pop
     end
     children.times{characters << Character.new(location: place.location, residence: place)}
     [mother, father].each{|char| char.progeny << characters } if characters.count > 0

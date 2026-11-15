@@ -1,11 +1,10 @@
 require 'rubygems'
 require 'bundler/setup'
 require 'sass/plugin/rack'
-require 'pry-rescue'
-use PryRescue::Rack if ENV["RACK_ENV"] == 'development'
-Bundler.require(:default)
+Bundler.require(:default, ENV['RACK_ENV'] == 'production' ? :production : :development)
 use Sass::Plugin::Rack
-use Rack::Session::Cookie, key: 'greatly_deserved_deserts', secret: 'the_dream_within_is_also_without', old_secret: 'telltale_signs_of_old_age'
+use Rack::Session::Cookie, key: 'greatly_deserved_deserts',
+  secret: ENV.fetch('SESSION_SECRET', 'dev-only-secret-change-me-dev-only-secret-change-me-0123456789')
 
 require './world'
-run Sphere 
+run Sphere

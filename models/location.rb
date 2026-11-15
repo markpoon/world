@@ -1,5 +1,5 @@
 class Location
-  include Mongoid::Document
+  include DataMapper::Resource
   include Coordinates
   index({c: "2d"}, {min: -180, max: 180, unique: true, background: true})
   belongs_to :sector
