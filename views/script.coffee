@@ -272,6 +272,10 @@ document.addEventListener "DOMContentLoaded", ->
       # every building carries the "Building" tag (see generatePlaces)
       @onHit "Building", (obj) ->
         profile(obj[obj.length-1].obj, "place") unless document.querySelector("#profile")
+      # a building tooltip belongs to the tile you stand on: close it when you step off
+      @bind "Moved", ->
+        tile = root.profileTile
+        closeProfile() if tile and (@mapx isnt tile[0] or @mapy isnt tile[1])
 
   Crafty.c "AStar",
     _compareNode: (node1, node2) ->
@@ -832,27 +836,31 @@ document.addEventListener "DOMContentLoaded", ->
     Stockpile: "A store of gathered goods."
 
   closeProfile = ->
+    root.profileTile = null
     p = document.querySelector("#profile")
     p.remove() if p
 
-  # Opens the panel for a building ("place") or a character. Walking onto a
-  # building tile opens it; Close dismisses it.
+  # Building tooltip: shown while you stand on the building's tile, no button
+  # (it closes itself when you leave). Character details keep a Close button.
   profile = (entity, kind) ->
     closeProfile()
     panel = document.createElement "section"
     panel.id = "profile"
-    panel.setAttribute "role", "dialog"
-    panel.setAttribute "aria-label", "Details"
+    panel.className = kind
     title = document.createElement "h2"
     body = document.createElement "p"
     list = document.createElement "dl"
     if kind is "place"
+      panel.setAttribute "role", "status" # announced politely, never steals focus
       name = entity._type or entity.name or "Building"
       title.textContent = name
       body.textContent = PLACE_INFO[name] or "A building."
       rows = [["Position", "#{entity.mapx}, #{entity.mapy}"]]
       rows.push ["Resources", "#{entity.rw ? 0} wood, #{entity.rg ? 0} grain, #{entity.rf ? 0} food"] if entity.rw? or entity.rg? or entity.rf?
+      root.profileTile = [entity.mapx, entity.mapy]
     else
+      panel.setAttribute "role", "dialog"
+      panel.setAttribute "aria-label", "Details"
       title.textContent = entity.name or "Traveller"
       body.textContent = "A character in the world."
       rows = []
@@ -865,14 +873,16 @@ document.addEventListener "DOMContentLoaded", ->
       dd.textContent = v
       list.appendChild dt
       list.appendChild dd
-    close = document.createElement "button"
-    close.type = "button"
-    close.textContent = "Close"
-    close.addEventListener "click", closeProfile
-    for el in [title, body, list, close]
+    for el in [title, body, list]
       panel.appendChild el
+    if kind isnt "place"
+      close = document.createElement "button"
+      close.type = "button"
+      close.textContent = "Close"
+      close.addEventListener "click", closeProfile
+      panel.appendChild close
     document.body.appendChild panel
-    close.focus()
+    close.focus() if close
 
   generateTilesWith=(response) ->
     generateLocations response["locations"]

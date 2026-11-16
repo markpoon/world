@@ -205,6 +205,9 @@ button:not(:disabled):active { filter: brightness(0.9); }
   backdrop-filter: blur(8px);
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.5);
 }
+/* a building tooltip is informational only: taps and drags pass through to the map */
+#profile.place { pointer-events: none; }
+#profile.place dl { margin-bottom: 0; }
 #profile h2 { margin: 0 0 4px; font-size: 1.2rem; }
 #profile p { margin: 0 0 10px; color: var(--muted); font-size: 0.95rem; line-height: 1.4; }
 #profile dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 12px; font-size: 0.9rem; }
