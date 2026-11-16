@@ -18,6 +18,7 @@ the current environment and flags (and logs them once at boot).
 | `SHOW_ERRORS` | full stack-trace pages instead of the generic 500 page | same as above |
 | `RELOAD_CODE` | `Sinatra::Reloader` | same as above |
 | `SEED_DEMO_USER` | create the demo account on boot (credentials in `lib/seed.rb`) | off |
+| `LOAD_OVERTURE` | load the bundled Overture Maps places (`data/overture/`) on boot | on |
 | `DATABASE_URL` | Postgres URL (SQLite in local development if unset) | |
 
 Players sign up from the login screen (`POST /user/signup`; passwords are bcrypt-hashed).
@@ -63,6 +64,35 @@ few renamed fields). To remove them:
     DATABASE_URL=postgres://... bundle exec ruby tools/drop_legacy_columns.rb --drop
 
 It only drops columns that hold no data.
+
+## The map: real places and walking
+
+Terrain is generated (see `lib/world_generator.rb`). Buildings come from real
+places in [Overture Maps](https://overturemaps.org): a cafe in the real world is
+an Inn in the game, a bank a Hall, a park a Pasture, and so on (the rules are in
+`lib/overture.rb`). Each building keeps the real name and category, which the
+tooltip shows.
+
+* **Getting data.** Run once, by a developer, then commit the file:
+  `pip install duckdb && python3 tools/fetch_overture.py NAME WEST SOUTH EAST NORTH`
+  (for example `mississauga -79.80 43.52 -79.62 43.69`). It writes
+  `data/overture/NAME.csv.gz` and `NAME.json` (the box and the Overture release).
+  The server never calls Overture while running.
+* **Loading.** On boot every file in `data/overture/` that is not yet in the
+  database is loaded into `points_of_interest` (a newer release of the same file
+  replaces the old one). Set `LOAD_OVERTURE=false` to skip.
+* **On the map.** The most trusted place on each 0.001 degree tile (about 100 m)
+  becomes its building. Inside a loaded box only real places appear; outside it
+  the generator still invents buildings. Real places never sit in the sea or on a
+  mountain (the tile becomes plains), and the spawn clearing stays empty.
+* **Walking.** When the player finishes a step the browser calls
+  `GET /user/explore?lng=&lat=&reach=`; the server builds any missing squares
+  around that tile (`World.populate_adjacent`) and the browser draws the new
+  ones. `EXPLORE_REACH` in `views/script.coffee` sets how far out it asks for.
+
+Overture Maps Places data is licensed under CDLA-Permissive-2.0
+(<https://docs.overturemaps.org/>); the data comes from Overture Maps Foundation
+and its contributors.
 
 ## Tests
 

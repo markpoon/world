@@ -55,7 +55,7 @@ class WireFormatTest < WorldTest
     buildings = sight['locations'].flat_map { |t| t['places'] || [] }
     refute_empty buildings
     buildings.each do |b|
-      assert_keys b, %w[_type id name], %w[family_id owner_id wood ore food water gold], 'building'
+      assert_keys b, %w[_type id name], %w[title category family_id owner_id wood ore food water gold], 'building'
       assert_equal b['_type'], b['name']
     end
   end

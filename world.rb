@@ -11,6 +11,7 @@ require "data_mapper"
 require "./lib/game_model"
 require "./models/models.rb"
 require "./lib/world_generator"
+require "./lib/overture"
 require "./lib/seed"
 require "./controllers/controllers.rb"
 
@@ -64,6 +65,9 @@ class Sphere < Sinatra::Base
 
   DataMapper.finalize.auto_upgrade!
   puts "Cosmic Dream starting: #{AppEnv.summary}"
+  if AppEnv.load_overture?
+    Overture.load_bundled!.each { |r| puts "Overture: loaded #{r.places} places for #{r.name} (#{r.release})" }
+  end
   Seed.demo_user! if AppEnv.seed_demo_user?
 
   before "/user/*" do
@@ -173,6 +177,24 @@ class Sphere < Sinatra::Base
     user = session[:user] && User.get(session[:user])
     halt 401, { error: 'Not logged in.' }.to_json unless user
     user.sight.to_json
+  end
+
+  # The player stepped onto a tile: build and return the squares next to it.
+  #   GET /user/explore?lng=-79.708&lat=43.607[&reach=1]
+  # Only a short walk from where the player started is allowed.
+  EXPLORE_LIMIT = 0.5 # degrees from the start tile
+  get '/user/explore' do
+    user = session[:user] && User.get(session[:user])
+    halt 401, { error: 'Not logged in.' }.to_json unless user
+    lng = Float(params['lng']) rescue nil
+    lat = Float(params['lat']) rescue nil
+    halt 400, { error: 'lng and lat are required.' }.to_json unless lng && lat
+    start = user.location
+    if start && ((lng - start.cx).abs > EXPLORE_LIMIT || (lat - start.cy).abs > EXPLORE_LIMIT)
+      halt 400, { error: 'That is too far away.' }.to_json
+    end
+    result = World.populate_adjacent(lng, lat, params['reach'] || 1)
+    { created: result[:created], locations: result[:tiles].as_json }.to_json
   end
 
   # What mode is the app in? Non-sensitive, so it can be left on in any mode.

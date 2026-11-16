@@ -14,6 +14,7 @@ ENV['RELOAD_CODE']          = 'false'
 ENV['ENABLE_DEBUG_ROUTES']  = 'false'
 ENV['SHOW_ERRORS']          = 'false'
 ENV['SEED_DEMO_USER']       = 'false'
+ENV['LOAD_OVERTURE']        = 'false' # tests load their own small POI files
 ENV['SESSION_SECRET']       = 'test-secret-test-secret-test-secret-test-secret-0123456789'
 TEST_DB_DIR = Dir.mktmpdir('world-test')
 # Set TEST_DATABASE_URL (e.g. postgres://user:pw@host/db) to run the suite on Postgres.

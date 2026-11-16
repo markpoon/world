@@ -233,6 +233,8 @@ document.addEventListener "DOMContentLoaded", ->
           if (@_direction[0] == -1 || @_direction[1] == -1) 
             @z = 4 + (@mapx + @mapy) * 5
           @trigger "setControls"
+          # stepped onto a new tile: build and show the squares around it
+          exploreAround @mapx, @mapy if root.player is @
         @trigger "Moved",
           x: @x
           y: @y
@@ -825,6 +827,21 @@ document.addEventListener "DOMContentLoaded", ->
     Academy: "A school of learning."
     Fortress: "A fortified keep."
     Stockpile: "A store of gathered goods."
+    Blacksmith: "A forge: tools and weapons are made and repaired here."
+    Barrack: "Soldiers train and sleep here."
+    Mill: "Timber and grain are milled and stored here."
+    Mine: "Ore is dug from the ground here."
+    Castle: "A landmark that has stood for a long time."
+    Pasture: "Open ground for grazing and play."
+
+  # Buildings without their own picture borrow one for now
+  PLACE_ART =
+    Blacksmith: "Smith"
+    Barrack: "Barracks"
+    Market: "Inn"
+    Castle: "Hall"
+    Mill: "Smith"
+    Mine: "Shack"
 
   closeProfile = ->
     root.profileTile = null
@@ -844,9 +861,10 @@ document.addEventListener "DOMContentLoaded", ->
     if kind is "place"
       panel.setAttribute "role", "status" # announced politely, never steals focus
       name = entity._type or entity.name or "Building"
-      title.textContent = name
-      body.textContent = PLACE_INFO[name] or "A building."
+      title.textContent = entity.title or name # a real place has its own name
+      body.textContent = (if entity.title then "#{name}. " else "") + (PLACE_INFO[name] or "A building.")
       rows = [["Position", "#{entity.mapx}, #{entity.mapy}"]]
+      rows.push ["Category", entity.category.replace(/_/g, " ")] if entity.category
       rows.push ["Resources", "#{entity.wood ? 0} wood, #{entity.food ? 0} food, #{entity.ore ? 0} ore, #{entity.water ? 0} water"] if entity.wood? or entity.food?
       rows.push ["Gold", "#{entity.gold}"] if entity.gold?
       root.profileTile = [entity.mapx, entity.mapy]
@@ -877,6 +895,7 @@ document.addEventListener "DOMContentLoaded", ->
     close.focus() if close
 
   generateTilesWith=(response) ->
+    root.loaded = {}
     generateLocations response["locations"]
     generateCharacters response["characters"]
     generateUsers response["users"]
@@ -899,7 +918,45 @@ document.addEventListener "DOMContentLoaded", ->
           t.collision(new Crafty.polygon([0, 72], [64, 40], [128, 72], [64, 105]))
       # t.checkvision()
       root.grid.place x, y, 0, t
+      root.loaded["#{x},#{y}"] = true
       generatePlaces(location.places, location.c) if location.places
+    return
+
+  # --- Exploring: the world grows as you walk ------------------------------
+  # Each time the player finishes a step, ask the server for the squares around
+  # the new tile (it builds any that do not exist yet) and draw the ones we do
+  # not have. EXPLORE_REACH is how many squares out to ask for: 1 is the
+  # neighbours, more keeps the edge of the map further away from the player.
+  EXPLORE_REACH = 2
+  root.loaded = {}
+  exploring = false
+
+  tileToCoordinates = (x, y) ->
+    [root.center[0] + (x - root.delta) / 1000, root.center[1] + y / 1000]
+
+  missingAround = (x, y) ->
+    for dx in [-EXPLORE_REACH..EXPLORE_REACH]
+      for dy in [-EXPLORE_REACH..EXPLORE_REACH]
+        return true unless root.loaded["#{x + dx},#{y + dy}"]
+    false
+
+  exploreAround = (x, y) ->
+    return if exploring or not root.authenticated
+    return unless missingAround x, y
+    exploring = true
+    [lng, lat] = tileToCoordinates x, y
+    ajax.get "/user/explore",
+      params:
+        lng: lng.toFixed 6
+        lat: lat.toFixed 6
+        reach: EXPLORE_REACH
+      success: ->
+        fresh = (l for l in (@responseJSON?.locations or []) when not root.loaded["#{c2t(l.c)[0]},#{c2t(l.c)[1]}"])
+        generateLocations fresh if fresh.length > 0
+      failure: (e) ->
+        console.log "Could not explore: #{e}"
+      complete: ->
+        exploring = false
     return
   
   generatePlaces=(places, coordinates) ->
@@ -909,7 +966,7 @@ document.addEventListener "DOMContentLoaded", ->
       switch place._type
         when "Smith", "Farm", "Hall" then z++
         when "Shack", "House", "Inn" then z=2
-      p = Crafty.e("x#{x}, y#{y}, Text, 2D, DOM, Collision, Building," + componentSuffix(place._type))
+      p = Crafty.e("x#{x}, y#{y}, Text, 2D, DOM, Collision, Building," + componentSuffix(PLACE_ART[place._type] or place._type))
         .attr
           mapx: x
           mapy: y

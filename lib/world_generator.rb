@@ -6,6 +6,7 @@
 # tiles are only written to the database the first time somebody can see them.
 require 'zlib'
 require 'set'
+require_relative 'overture'
 
 module World
   SCALE      = 1000 # tiles per degree (the rest of the app uses 3 decimals)
@@ -114,6 +115,36 @@ module World
     locations
   end
 
+  BLOCKING = %w[Sea Lake Mountain].freeze
+
+  # Real places (Overture Maps, see lib/overture.rb) take priority over invented
+  # ones. Where a region of real data has been loaded, tiles with no real place
+  # stay empty rather than getting a made-up building.
+  def self.build_place(tile, terrain, ix, iy, poi, covered)
+    if poi
+      Object.const_get(poi.building).create(location: tile, title: poi.name, category: poi.category,
+                                            source: 'overture', source_id: poi.overture_id)
+    elsif !covered
+      klass = place_for(terrain, ix, iy)
+      klass.create(location: tile) if klass
+    end
+  end
+
+  # Bring a tile that already exists in line with what the generator says it
+  # should hold now (tiles from older versions, or a newly loaded data file).
+  def self.sync_place(tile, ix, iy, poi, covered, current)
+    if poi
+      return if current.size == 1 && current.first.source_id == poi.overture_id
+      return if BLOCKING.include?(tile.class.name) # a real place never sits in the sea
+      current.each(&:destroy)
+      build_place(tile, tile.class, ix, iy, poi, covered)
+    elsif covered
+      current.each(&:destroy)
+    elsif current.empty?
+      build_place(tile, tile.class, ix, iy, nil, false)
+    end
+  end
+
   # Make sure every tile within `radius` of (lng, lat) exists, and that tiles
   # created by earlier versions of the generator have the buildings the
   # generator says they should. Safe to call often. Returns tiles created.
@@ -128,7 +159,9 @@ module World
       ).to_a
       existing = {}
       tiles.each { |l| existing[[(l.cx * SCALE).round, (l.cy * SCALE).round]] = l }
-      with_building = tiles.empty? ? Set.new : Place.all(location_id: tiles.map(&:id)).map(&:location_id).to_set
+      places = tiles.empty? ? {} : Place.all(location_id: tiles.map(&:id)).to_a.group_by(&:location_id)
+      regions = PoiRegion.all.to_a
+      pois = regions.empty? ? {} : Overture.best_by_tile((cx - radius)..(cx + radius), (cy - radius)..(cy + radius))
 
       created = 0
       Location.transaction do
@@ -136,22 +169,39 @@ module World
           (-radius..radius).each do |dy|
             ix = cx + dx
             iy = cy + dy
+            poi = spawn_clearing?(ix, iy) ? nil : pois[[ix, iy]]
+            covered = !poi.nil? || regions.any? { |region| region.covers?(ix, iy) }
             if (tile = existing[[ix, iy]])
-              unless with_building.include?(tile.id)
-                building = place_for(tile.class, ix, iy)
-                building.create(location: tile) if building
-              end
+              sync_place(tile, ix, iy, poi, covered, places[tile.id] || [])
               next
             end
-            terrain  = terrain_for(ix, iy)
-            tile     = terrain.create(cx: ix / SCALE.to_f, cy: iy / SCALE.to_f)
-            building = place_for(terrain, ix, iy)
-            building.create(location: tile) if building
+            terrain = terrain_for(ix, iy)
+            terrain = Plain if poi && BLOCKING.include?(terrain.name) # real places sit on land
+            tile = terrain.create(cx: ix / SCALE.to_f, cy: iy / SCALE.to_f)
+            build_place(tile, terrain, ix, iy, poi, covered)
             created += 1
           end
         end
       end
       created
     end
+  end
+
+  # When a player steps onto a tile, make sure the squares next to it exist
+  # (building them, with their real or invented places, if they do not), and
+  # return them ready to send to the browser. `reach` is how many squares out
+  # to go: 1 is the eight neighbours.
+  ADJACENT_MAX = 3
+  def self.populate_adjacent(lng, lat, reach = 1)
+    reach = [[reach.to_i, 1].max, ADJACENT_MAX].min
+    created = ensure_area(lng, lat, reach)
+    cx, cy = grid(lng, lat)
+    half = 0.5 / SCALE
+    tiles = Location.all(
+      :cx.gte => (cx - reach) / SCALE.to_f - half, :cx.lte => (cx + reach) / SCALE.to_f + half,
+      :cy.gte => (cy - reach) / SCALE.to_f - half, :cy.lte => (cy + reach) / SCALE.to_f + half
+    ).to_a
+    preload_places(tiles)
+    { created: created, tiles: tiles }
   end
 end

@@ -8,4 +8,5 @@
   "sector",
   "journey",
   "family",
-  "faction",].each{ |file| require_relative file}
+  "faction",
+  "point_of_interest",].each{ |file| require_relative file}

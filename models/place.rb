@@ -3,6 +3,11 @@ class Place
   include Resources
   include CreatesEvents
   property :soldiers, Integer, required: false
+  # Buildings made from a real place (Overture Maps) remember which one
+  property :title,     String, length: 255, required: false # the real name, e.g. "Joe's Coffee"
+  property :category,  String, length: 120, required: false # the Overture category, e.g. "coffee_shop"
+  property :source,    String, length: 20,  required: false # "overture"; blank for invented buildings
+  property :source_id, String, length: 64,  required: false
   belongs_to :family, required: false
   belongs_to :location, required: false
   belongs_to :owner, 'Character', required: false
@@ -25,9 +30,10 @@ class Place
     location.events.last
   end
 
-  # What the browser gets for a building: its id, kind (_type), name and resources.
+  # What the browser gets for a building: its id, kind (_type), name, the real
+  # place it came from (title, category) and resources.
   def as_json(*)
-    names = [:id, :_type, :name, :family_id, :owner_id, :wood, :ore, :food, :water]
+    names = [:id, :_type, :name, :title, :category, :family_id, :owner_id, :wood, :ore, :food, :water]
     names << :gold if respond_to?(:gold)
     serialize(*names)
   end
