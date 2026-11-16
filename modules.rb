@@ -58,22 +58,23 @@ end
 module Entity
   def self.included(reciever)
     reciever.class_eval do
-      belongs_to :location, dependent: :nullify
+      belongs_to :location, required: false
     end
   end
   def move(coordinates)
     unless self.location.coordinates == coordinates
       puts "\n#{self} was originally at #{self.location.coordinates}"
-      self.location = Location.find_by(coordinates: coordinates)
+      self.location = Location.at(coordinates)
       puts "but has moved to #{self.location.coordinates}\n"
     else
       puts "You are already at coordinates #{coordinates}."
     end
   end
+  # Put the entity on the tile at these [lng, lat] coordinates (building the map there if needed).
   def coordinates=(coordinates)
-    location_check = Location.where(coordinates: coordinates.to_d(3).to_f)
-    WorldFactory.fabricate(coordinates.to_d(2).to_f) unless location_check.exists?
-    self.location = location_check.first
+    lng, lat = coordinates.map(&:to_f)
+    World.ensure_area(lng, lat, 0)
+    self.location = World.tile_at(lng, lat)
   end
   def coordinates
     self.location.coordinates
@@ -90,7 +91,6 @@ module Coordinates
   def coordinates
     [cx, cy]
   end
-  alias_method :c, :coordinates
   def coordinates=(coordinates)
     self.cx, self.cy = coordinates.to_d(check_decimal(self.class)).to_f
   end
@@ -100,26 +100,14 @@ module Coordinates
 end
 
 module Targetting  
-  # feed it a location or sector and it will spit back out a random coordinate
-  def coordinates_in_sector(sector)
-    return unless sector.class == Sector
-    coordinates_array = []
-    coordinates = sector.coordinates.to_d
-    (coordinates[0]..(coordinates[0] + BigDecimal(0.009,3))).step(BigDecimal(0.001, 3)) do |i|
-      (coordinates[1]..(coordinates[1] + BigDecimal(0.009,3))).step(BigDecimal(0.001, 3)) do |j|
-        c = [i,j].map(&:to_f)
-        coordinates_array << c
-      end
-    end
-    coordinates_array
-  end
+  # Helpers for finding tiles around a location.
   def locations_on_circle(location, r=1, r2=r+1, n=nil)
     _all = (locations_in_circle location, r2) - (locations_in_circle location, r)
   end
   def locations_in_circle(location, r=1)
     c = location.coordinates
     r = (BigDecimal r * 0.001, 3)
-    return Location.within_circle(coordinates: [c, r.to_f])
+    Location.within(c, r.to_f)
   end
   def coordinates_on_box(location, r=1, r2=r+1, n=nil)
     all = (coordinates_in_box location, r2) - (coordinates_in_box location, r)
@@ -140,7 +128,7 @@ module Targetting
     return sample_or_all all, n
   end
   def sight
-    self.locations_in_circle(self.location, self.vision).without(:sector_id, :faction_id).entries
+    locations_in_circle(location, vision).to_a
   end
   private
   def sample_or_all(c, n=nil)
@@ -152,10 +140,10 @@ end
 module Resources
   def self.included(reciever)
     reciever.class_eval do
-      field :rw, as: :wood, type: Integer, default: ->{random 25}
-      field :ro, as: :ore, type: Integer, default: ->{random 25}
-      field :rf, as: :food, type: Integer, default: ->{random 25}
-      field :ra, as: :water, type: Integer, default: ->{random 25}
+      property :wood, Integer, required: false, default: proc { |_r, _p| random 25 }
+      property :ore, Integer, required: false, default: proc { |_r, _p| random 25 }
+      property :food, Integer, required: false, default: proc { |_r, _p| random 25 }
+      property :water, Integer, required: false, default: proc { |_r, _p| random 25 }
     end
   end
   def eat(amount)
@@ -177,7 +165,7 @@ end
 module Prestige
   def self.included(reciever)
     reciever.class_eval do
-      field :rr, as: :reputation, type: Integer, default: ->{random 42}
+      property :reputation, Integer, required: false, default: proc { |_r, _p| random 42 }
     end
   end
   def influence(entity, amount)
@@ -218,9 +206,9 @@ end
 module Challenge
   def self.included(reciever)
     reciever.class_eval do
-      field :r, as: :reward, type: Array, default: []
-      field :rd, as: :rewarded, type: Boolean, default: nil
-      field :n, as: :npc, type: Array, default: []
+      list :reward, default: []
+      property :rewarded, Boolean, required: false
+      list :npc, default: []
     end
   end
   def add_npc(n=1, type=nil)
@@ -237,13 +225,12 @@ module Challenge
     end
   end
   def add_reward(n = 1)
-  	random(n).times{self.reward << Item.subclasses.sample.to_s.intern} 
+  	random(n).times{self.reward << Item.descendant_classes.sample.to_s.intern} 
   end
   def reward_players
     return nil if rewarded?
     self.reward.each do |item|
-      binding.pry
-      self.characters.each(&:items) << Generate.item(item.to_s.capitalize.constanize)
+      characters.each { |character| character.items.concat(Generate.item(item.to_s.capitalize.constantize)) }
     end
   end
   private
@@ -252,7 +239,8 @@ end
 module Ambition
   def self.included(reciever)
     reciever.class_eval do
-      embeds_many :objectives, as: :ambitions, store_as: :a
+      # Families and factions each own their objectives (Objective belongs_to both)
+      has n, :objectives, 'Objective', child_key: [:"#{reciever.name.underscore}_id"]
     end
   end
   def to_s

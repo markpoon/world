@@ -1,12 +1,12 @@
 module Personality 
   def self.included(reciever)
     reciever.class_eval do
-      field :bi, as: :indifference, type: Integer, default: ->{random(-15, 15)} # :curiosity, likely to open or play with things vs. not wanting to interact at all.
-      field :bm, as: :materialism, type: Integer, default: ->{random(-15, 15)} # :idealism, actions that will be for physical things, gold, items, property  
-      field :bg, as: :greed, type: Integer, default: ->{random(-15, 15)} # :naivity, actions that will benefit themselves vs. ones that will benefit the most people.
-      field :bc, as: :caution, type: Integer, default: ->{random(-15, 15)} # :spontanaity, How likely a character will choose safe vs. unsafe actions.
-      field :bs, as: :stubbornness, type: Integer, default: ->{random(-15, 15)} # :indecisive, stick to previous actions despite negative progress, likelihood to change actions
-      field :ba, as: :arrogance, type: Integer, default: ->{random(-15, 15)} # :passive, attempts to take :rep vs. give more :rep to others
+      property :indifference, Integer, required: false, default: proc { |_r, _p| random(-15, 15) } # :curiosity, likely to open or play with things vs. not wanting to interact at all.
+      property :materialism, Integer, required: false, default: proc { |_r, _p| random(-15, 15) } # :idealism, actions that will be for physical things, gold, items, property  
+      property :greed, Integer, required: false, default: proc { |_r, _p| random(-15, 15) } # :naivity, actions that will benefit themselves vs. ones that will benefit the most people.
+      property :caution, Integer, required: false, default: proc { |_r, _p| random(-15, 15) } # :spontanaity, How likely a character will choose safe vs. unsafe actions.
+      property :stubbornness, Integer, required: false, default: proc { |_r, _p| random(-15, 15) } # :indecisive, stick to previous actions despite negative progress, likelihood to change actions
+      property :arrogance, Integer, required: false, default: proc { |_r, _p| random(-15, 15) } # :passive, attempts to take :rep vs. give more :rep to others
     end
   end
   def reaction(stat, pass = 1)
@@ -42,12 +42,12 @@ end
 Effect = Struct.new :name, :duration, :value
 
 class Stats
-  include DataMapper::Resource
-  field :sw, as: :wound, type: Integer
-  field :sc, as: :scratch, type: Integer
-  field :si, as: :injury, type: Integer
-  field :se, as: :energy, type: Integer
-  field :ss, as: :status, type: Hash
+  include GameModel
+  property :wound, Integer, required: false
+  property :scratch, Integer, required: false
+  property :injury, Integer, required: false
+  property :energy, Integer, required: false
+  dict :status
   def scratch_max
     (self.resolve + self.dexterity * 1.618 - (self.injury||0)).round
   end  
@@ -63,17 +63,17 @@ class Stats
   def energy
     attribute_get(:energy) || energy_max
   end
-  field :st, as: :thirst, type: Integer, default: ->{random 80,100}
-  field :su, as: :hunger, type: Integer, default: ->{random 80,100}
-  field :sl, as: :sleep, type: Integer, default: ->{random 80,100}
+  property :thirst, Integer, required: false, default: proc { |_r, _p| random 80,100 }
+  property :hunger, Integer, required: false, default: proc { |_r, _p| random 80,100 }
+  property :sleep, Integer, required: false, default: proc { |_r, _p| random 80,100 }
   
-  field :ss, as: :strength, type: Integer, default: ->{random 5,15}
-  field :st, as: :stamina, type: Integer, default: ->{random 5,15}
-  field :sd, as: :dexterity, type: Integer, default: ->{random 5,15}
-  field :sp, as: :persuasion, type: Integer, default: ->{random 5,15}
-  field :si, as: :intellegence, type: Integer, default: ->{random 5,15}
-  field :su, as: :intuition, type: Integer, default: ->{random 5,15}
-  field :sr, as: :resolve, type: Integer, default: ->{random 5,15}
+  property :strength, Integer, required: false, default: proc { |_r, _p| random 5,15 }
+  property :stamina, Integer, required: false, default: proc { |_r, _p| random 5,15 }
+  property :dexterity, Integer, required: false, default: proc { |_r, _p| random 5,15 }
+  property :persuasion, Integer, required: false, default: proc { |_r, _p| random 5,15 }
+  property :intellegence, Integer, required: false, default: proc { |_r, _p| random 5,15 }
+  property :intuition, Integer, required: false, default: proc { |_r, _p| random 5,15 }
+  property :resolve, Integer, required: false, default: proc { |_r, _p| random 5,15 }
 
   def check(stat, pass = 1, difficulty = 1)
     result = []
@@ -89,7 +89,6 @@ class Stats
 end
 
 class Character < Stats
-  include Mongoid::Timestamps::Created
   include Entity
   include Naming
   include Personality
@@ -97,64 +96,68 @@ class Character < Stats
   include Inventory
   include Targetting
   
-  belongs_to :user, dependent: :nullify
-  
-  has_many :holdings, inverse_of: :owner, class_name: "Place"
-  belongs_to :employed, inverse_of: :employees, class_name: "Place"
-  belongs_to :residence, inverse_of: :residents, class_name: "Place"
-  
-  belongs_to :family
-  has_and_belongs_to_many :progenitors, inverse_of: :progeny, class_name: "Character"
-  has_one :spouse, inverse_of: :spouse, class_name: "Character"
-  belongs_to :spouse, inverse_of: :spouse, class_name: "Character"
-  has_and_belongs_to_many :progeny, inverse_of: :progenitors, class_name: "Character"
-  validate :check_character_limit, :check_progenitors, on: :create
-  
-  has_and_belongs_to_many :abilities, inverse_of: nil
-  
+  belongs_to :user, required: false
+  has n, :holdings, 'Place', child_key: [:owner_id]
+  belongs_to :employed, 'Place', required: false
+  belongs_to :residence, 'Place', required: false
+  belongs_to :family, required: false
+  belongs_to :spouse, 'Character', required: false
+  belongs_to :allegience, 'Faction', required: false
+
+  # parents and children (a character-to-character many-to-many, via Parentage)
+  has n, :child_links, 'Parentage', child_key: [:parent_id]
+  has n, :parent_links, 'Parentage', child_key: [:child_id]
+  has n, :progeny, 'Character', through: :child_links, via: :child
+  has n, :progenitors, 'Character', through: :parent_links, via: :parent
+
+  has n, :abilities, through: DataMapper::Resource
+  has n, :journeys, through: DataMapper::Resource
+
+  validates_with_method :check_character_limit
+  validates_with_method :check_progenitors
+
   def name; lastname ? ([firstname, lastname].join(' ')) : (firstname); end
-  field :n, as: :firstname, type: String 
+  property :firstname, String, required: false, length: 255
   def lastname; self.family ? (self.family.name) : (nil); end
 
-  field :p, as: :portrait, type: String
-  field :a, as: :age, type: Integer, default: ->{random 12, 26}
-  field :v, as: :vision, type: Integer
-  field :g, as: :female?, type: Boolean, default: ->{[nil, true].sample}
-  field :x, as: :homosexual?, type: Boolean, default: ->{[nil, nil, true, nil, nil].sample}
+  property :portrait, String, required: false, length: 255
+  property :age, Integer, required: false, default: proc { |_r, _p| random 12, 26 }
+  property :vision, Integer, required: false
+  property :female, Boolean, required: false, default: proc { |_r, _p| [nil, true].sample }
+  property :homosexual, Boolean, required: false, default: proc { |_r, _p| [nil, nil, true, nil, nil].sample }
   
-  belongs_to :allegience, class_name: "Faction", inverse_of: :subjects, dependent: :nullify
   
-  field :f, as: :faction_attitude, type: Symbol
+  symbol :faction_attitude
 
-  has_and_belongs_to_many :journeys, dependent: :nullify
-  field :j, as: :journey_attitude, type: Symbol
+  symbol :journey_attitude
   
-  after_initialize do
-    unless persisted?
-      self.firstname = random_person_name self.gender unless self.firstname
-      starting_items if items.empty?
-    end
+  after_build do
+    self.firstname = random_person_name self.gender unless self.firstname
+    starting_items if items.empty?
   end
   
   def gender
     self.female? ? (:female) : (:male)
   end
   def gender=(gender)
-    gender == :female ? (self.g = true) : (self.g = nil)
+    self.female = (gender == :female ? true : nil)
   end
   def sexuality
     self.homosexual? ? (:homosexual) : (:heterosexual)
   end
   def sexuality=(sex)
-    sex == :homosexual ? (self.x = true) : (self.x = true)
+    self.homosexual = (sex == :homosexual ? true : nil)
   end
   def vision
-    self.v||1
+    attribute_get(:vision) || 1
   end
-  PUBLIC_JSON = {:except => [:created_at, :x, :q, :n, :ability_ids, :journey_ids, :f, :location_id, :v], :methods => [:vision, :name, :gender, :coordinates], :include => {:items => Item::PUBLIC_JSON, :abilities=> Ability::PUBLIC_JSON}}
-  def as_json(options = PUBLIC_JSON)
-    s = super(options)
-    s.reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  # What the browser gets for a character.
+  def as_json(*)
+    serialize(:id, :name, :firstname, :age, :gender, :vision, :coordinates, :gold, :reputation,
+              :energy, :scratch, :thirst, :hunger, :sleep,
+              :strength, :stamina, :dexterity, :persuasion, :intellegence, :intuition, :resolve,
+              :indifference, :materialism, :greed, :caution, :stubbornness, :arrogance,
+              :items, :abilities)
   end
   private
   
@@ -171,11 +174,19 @@ class Character < Stats
     end
     self.items = item_classes.collect{|i| Generate.item i}.flatten
   end
+  # Validations (DataMapper style: true, or [false, message]).
   def check_character_limit
-    return if user.blank?
-    errors.add(:base, "This user does not have enough slots open for a new character") if self.user.characters.count >= self.user.slots
+    return true unless new? && user
+    user.characters.count >= user.slots ? [false, "This user does not have enough slots open for a new character"] : true
   end
   def check_progenitors
-    errors.add(:base, "Why does this character have more than two parents?") if progenitors.count > 2
+    progenitors.size > 2 ? [false, "Why does this character have more than two parents?"] : true
   end
+end
+
+# Join model for Character#progeny / Character#progenitors
+class Parentage
+  include DataMapper::Resource
+  belongs_to :parent, 'Character', key: true
+  belongs_to :child, 'Character', key: true
 end

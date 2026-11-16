@@ -5,10 +5,9 @@ require './lib/app_env'
 require 'bundler'; Bundler.require(:default, :development)
 require 'sinatra/base'; require 'json'; require 'bigdecimal'; require 'set'; require 'timeout'
 require './modules'; require 'data_mapper'
-require './lib/mongoid_compat'; require './models/models.rb'
+require './lib/game_model'; require './models/models.rb'
 require './lib/world_generator'; require './lib/seed'; require './controllers/controllers.rb'
 DataMapper.setup(:default, ENV['DATABASE_URL'] || 'sqlite3:///tmp/smoke.db')
-MongoidCompat.finalize!
 DataMapper.finalize.auto_upgrade!
 
 $results = []
@@ -35,7 +34,7 @@ check('character items')           { ch.items.to_a }
 loc = World.tile_at(*Seed::CENTER)
 check('location as_json')          { loc.as_json.to_json }
 check('location buildings')        { loc.buildings.to_a }
-check('within_circle')             { Location.within_circle(coordinates: [loc.coordinates, 0.01]).to_a.size > 0 or raise 'none' }
+check('within_circle')             { Location.within(loc.coordinates, 0.01).to_a.size > 0 or raise 'none' }
 %w[Farm Shack House Inn Smith Hall Market Academy Fortress Stockpile].each do |name|
   next unless Object.const_defined?(name)
   klass = Object.const_get(name)

@@ -1,20 +1,17 @@
 class Family
-  include DataMapper::Resource
-  include Mongoid::Timestamps::Created
+  include GameModel
   include Naming
   include Ambition
-  has_many :characters
-  has_many :places
-  belongs_to :faction
+  has n, :characters
+  has n, :places
+  belongs_to :faction, required: false
   
-  field :n, as: :name, type: String
-  field :s, as: :speciality, type: Symbol
+  property :name, String, required: false, length: 255
+  symbol :speciality
   
-  after_initialize do
-    unless persisted?
-      self.name = random_person_name :family
-      specialize if speciality.nil?
-    end
+  after_build do
+    self.name = random_person_name :family if name.nil?
+    specialize if speciality.nil?
   end
   def specialize
     puts "base classes cannot specialize"

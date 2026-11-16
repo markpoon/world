@@ -1,22 +1,29 @@
 class Faction
-  include DataMapper::Resource
-  include Mongoid::Timestamps::Created
+  include GameModel
   include Naming
   include Ambition
-  has_and_belongs_to_many :sectors
-  has_many :families
-  has_many :locations  
-  has_many :subjects, class_name: "Character", inverse_of: :allegience # ids of users that can make changes
-  belongs_to :master, inverse_of: :vassals, class_name: "Faction"
-  field :p, as: :prefix, type: Symbol
+  has n, :sectors, through: DataMapper::Resource
+  has n, :families
+  has n, :locations
+  has n, :subjects, 'Character', child_key: [:allegience_id]
+  belongs_to :master, 'Faction', required: false
+  symbol :prefix
   def name;"The #{families.empty? ? (self.prefix) : (self.families.first.name)} #{self.class.to_s}";end
   def places; locations.collect(&:places).flatten.compact; end
   def halls; places.select{|i|i._type == "Hall"}; end
-  def upkeep;1 * 0.2 ** subject.count + 1 ** 1.7 ** locations.count;end
+  def upkeep;1 * 0.2 ** subjects.count + 1 ** 1.7 ** locations.count;end
   def issueQuest(character)
-    if character.journey.last.complete == true ? (character.journey.create!(faction: self)) : (puts 'this character has an active journey'); end
+    current = character.journeys.last
+    if current.nil? || current.progress == :returned
+      journey = Journey.create
+      character.journeys << journey
+      character.save
+      journey
+    else
+      puts 'this character has an active journey'
+    end
   end
-  after_create do
+  after :create do
     puts "  #{self.name} controls #{self.locations.count} land with #{self.objectives.count} objectives"
     puts "    #{self.families.count} houses, #{self.families.collect(&:name).join(", ")} are vying for control of this #{self.class}" if self.families.count > 1
   end
@@ -45,7 +52,7 @@ class Republic < Source
 end
 
 class Structured < Faction
-  has_many :vassals, inverse_of: :master, class_name: "Faction"
+  has n, :vassals, 'Faction', child_key: [:master_id]
 end
 class Empire < Structured
   # ruled either by a monarch (emperor, empress) or an oligarchy
@@ -70,18 +77,15 @@ class Hegemony < Structured
 end
 
 class Objective
-  include DataMapper::Resource
+  include GameModel
   include Targetting
-  embedded_in :ambitions, polymorphic: true
-  field :a, type: Boolean, default: true
-  field :e, type: Moped::BSON::ObjectId
-  field :j, type: Moped::BSON::ObjectId
-  
-  def event=(event); self.e = event.id; end
-  def event; Event.find(e) unless e.nil?; end
-  def journey=(journey); self.j = journey.id; end
-  def journey; Journey.find(j) unless j.nil?; end
-  def action; a.nil?; end
+  # owned by a family or a faction (see Ambition), and pointing at an event / journey
+  belongs_to :family, required: false
+  belongs_to :faction, required: false
+  belongs_to :event, required: false
+  belongs_to :journey, required: false
+  property :active, Boolean, required: false, default: true
+  def action; active.nil?; end
   def describe
     event.describe
   end

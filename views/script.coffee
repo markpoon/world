@@ -108,57 +108,48 @@ document.addEventListener "DOMContentLoaded", ->
     #     if @sight < 1 ? (@visible = false) : (@visible = true)
     #     @.draw()
       
+  # The fields the server sends for a building (see Place#as_json)
   Crafty.c "Place",
-    _id: null
+    id: null
     _type: null
+    name: null
     family_id: null
     owner_id: null
-    ra: null
-    rf: null
-    rg: null
-    ro: null
-    rw: null
-            
+    wood: null
+    ore: null
+    food: null
+    water: null
+    gold: null
+
+  # The fields the server sends for a character (see Character#as_json)
   Crafty.c "Character",
-    _id: null
-    user_id: null
+    id: null
     name: null
+    firstname: null
+    age: null
     gender: null
     vision: null
-    a: null
-    employed_id: null
-    allegience_id: null
-    journey_ids: []
-    progenitor_ids: []
-    progeny_ids: []
-    residence_ids: null
-    spouse_id: null
-  
-    p: null #portrait
-    j: null
-  
-    ba: null
-    bc: null
-    bg: null
-    bi: null
-    bm: null
-    bs: null
-  
-    rg: null
-    rr: null
-    sc: null
-    sd: null
-    se: null
-    si: null
-    sl: null
-    sp: null
-    sr: null
-    ss: null
-    st: null
-    su: null
-    sw: null
-    sc: null
-  
+    gold: null
+    reputation: null
+    energy: null
+    scratch: null
+    thirst: null
+    hunger: null
+    sleep: null
+    strength: null
+    stamina: null
+    dexterity: null
+    persuasion: null
+    intellegence: null
+    intuition: null
+    resolve: null
+    indifference: null
+    materialism: null
+    greed: null
+    caution: null
+    stubbornness: null
+    arrogance: null
+
     abilities:[]
     items: []
     _charcontrols: []
@@ -856,7 +847,8 @@ document.addEventListener "DOMContentLoaded", ->
       title.textContent = name
       body.textContent = PLACE_INFO[name] or "A building."
       rows = [["Position", "#{entity.mapx}, #{entity.mapy}"]]
-      rows.push ["Resources", "#{entity.rw ? 0} wood, #{entity.rg ? 0} grain, #{entity.rf ? 0} food"] if entity.rw? or entity.rg? or entity.rf?
+      rows.push ["Resources", "#{entity.wood ? 0} wood, #{entity.food ? 0} food, #{entity.ore ? 0} ore, #{entity.water ? 0} water"] if entity.wood? or entity.food?
+      rows.push ["Gold", "#{entity.gold}"] if entity.gold?
       root.profileTile = [entity.mapx, entity.mapy]
     else
       panel.setAttribute "role", "dialog"

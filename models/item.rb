@@ -1,16 +1,17 @@
 module Inventory
   def self.included(reciever)
     reciever.class_eval do
-      field :rg, as: :gold, type: Integer, default: ->{random 42}
-      embeds_many :items
+      property :gold, Integer, required: false, default: proc { |_r, _p| random 42 }
+      # Items belong to a character or to a building: the foreign key depends on which
+      has n, :items, 'Item', child_key: [reciever.name == 'Character' ? :character_id : :place_id]
     end
   end
   def buys(item, seller)
     if item.price < self.gold
       self.gold -= item.price
-      self.gets seller.item.pop
+      self.gets seller.items.pop
       seller.gold += item.price
-      [self, seller].each(&:save!)
+      [self, seller].each(&:save)
     else 
       puts "#{self.class}#{self.id} does not have enough moneys to buy item"
       return nil
@@ -23,8 +24,7 @@ module Inventory
     self.items[item].pop
   end
   def gets(items=nil)
-    items = [] << items
-    items.compact
+    items = Array(items).compact
     if self.carry < self.items.length + items.length
       for item in items
         self.items << item
@@ -44,7 +44,7 @@ end
 module Enchanted
   def self.included(reciever)
     reciever.class_eval do
-      has_and_belongs_to_many :abilities, inverse_of: nil
+      has n, :abilities, through: DataMapper::Resource
     end
   end
       
@@ -70,51 +70,47 @@ module Enchanted
 end
 
 class Item
-  include DataMapper::Resource
-  embedded_in :character
+  include GameModel
+  belongs_to :character, required: false
+  belongs_to :place, required: false
   
-  field :m, as: :material, type: Symbol
-  field :q, as: :quality, type: Integer, default: ->{random 10,24}
-  field :d, as: :durability, type: Integer, default: ->{random 10,24}
+  symbol :material
+  property :quality, Integer, required: false, default: proc { |_r, _p| random 10,24 }
+  property :durability, Integer, required: false, default: proc { |_r, _p| random 10,24 }
   
-  field :e, as: :effect, type: Symbol
-  field :c, as: :charge, type: Integer
-  field :n, as: :enchanted, type: Boolean
+  symbol :effect
+  property :charge, Integer, required: false
+  property :enchanted, Boolean, required: false
   
-  after_initialize do
+  after_build do
     self.class.send(:include, Enchanted) if enchanted
   end
   
-  def material=(m)
-    self.m = case 
-    when m.class == Array
-      m.sample
-    else
-      m
-    end
+  def material=(choice)
+    choice = choice.sample if choice.is_a?(Array)
+    super(choice)
     case material
     when :crystal
       self.quality += random(4,8)
       self.durability -= random(6,9)
-      when *[:glass, :paper]
-        self.quality += random(2,6)
-        self.durability -= random(5,8)
-    when *[:gold, :silver] then
+    when :glass, :paper
+      self.quality += random(2,6)
+      self.durability -= random(5,8)
+    when :gold, :silver
       self.quality += random(3,5)
       self.durability -= random(3,4)
-    when *[:wood, :leather] then
+    when :wood, :leather
       self.quality -= random(3,7)
       self.durability -= random(1,2)
-    when *[:iron, :steel]
+    when :iron, :steel
       self.durability += random(5,8)
     end
-    
   end
 
   def durability
-    self.d||durability_max
+    attribute_get(:durability) || durability_max
   end
-  
+
   def durability_max
     l = self.quality * 1.618 
     if self.effect
@@ -127,7 +123,6 @@ class Item
     else
       l *= 0.7
     end
-    binding.pry if l == 0
     l.round
   end
   
@@ -135,11 +130,11 @@ class Item
   def portrait; name + (durability / 10 + 1).to_s; end
   def price; base_price; end
   def use; use_charge if use_item; end
-  PUBLIC_JSON = {:except => :e, :methods => [:durability, :durability_max, :portrait, :price]}
-  def as_json(options = PUBLIC_JSON)
-    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  def as_json(*)
+    serialize(:id, :_type, :name, :material, :quality, :durability, :durability_max, :portrait, :price,
+              :effect, :charge, :enchanted)
   end
-  
+
   private
   def base_price
     p = (quality * 2)
@@ -153,9 +148,9 @@ class Item
     when :steel 
       p *= 1.2
     end
-    p * (durability/durability_max)
+    p * (durability.to_f / durability_max)
   end
-  def use_charge; charge > 1 ? (self.inc(:charge, -1)) : (self.delete); end
+  def use_charge; charge > 1 ? (self.inc(:charge, -1)) : (self.destroy); end
   def use_item; puts "you used an item!"; false; end
   def location
     character.location
@@ -163,26 +158,26 @@ class Item
 end
 
 class Gemstone < Item
-  after_initialize do
+  after_build do
     unless self.material then self.material = :crystal end
   end
 end
 
 class Readable < Item
-  after_initialize do
+  after_build do
     unless self.material then self.material = :paper end
   end
-  field :r, as: :read, type: String
+  property :read, String, required: false, length: 255
 end
 
 class Tool < Item
-  around_create do
+  before :create do
     self.charge = quality
   end
 end
 
 class LockPicks < Tool
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:iron, :steel] end
   end
   private
@@ -192,7 +187,7 @@ class LockPicks < Tool
 end
 
 class FlintAndSteel < Tool
-  after_initialize do
+  after_build do
     unless self.material then self.material = :steel end
   end
   private
@@ -202,30 +197,30 @@ class FlintAndSteel < Tool
 end
 
 class Potion < Item
-  after_initialize do
+  after_build do
     unless self.material then self.material = :glass end
   end
   include Enchanted
-  field :a, as: :attribute, type: Symbol
+  symbol :attribute
   def use_item
   end
 end
 
 class Rune < Item
   include Enchanted
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:paper, :leather] end
   end
   def use_item(target)
-    self.delete if ability.use(target, charge)
+    destroy if abilities.first && abilities.first.use(target, charge)
   end  
 end
 
 class Key < Item
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:wood, :iron, :steel] end
   end
-  field :o, as: :lock, type: Moped::BSON::ObjectId
+  property :lock, Integer, required: false
   validates_presence_of :lock
   def unlock(obj)
     obj.id == lock ? (obj.send(:unlock)) : (puts "This key does not unlock this object")
@@ -233,25 +228,22 @@ class Key < Item
 end
 
 class Equipment < Item
-  field :l, as: :slot, type: Symbol
-  field :u, as: :equipped, type: Boolean
+  symbol :slot
+  property :equipped, Boolean, required: false
   
+  # One equipped item per slot: unequip the others in that slot, then equip this one.
   def equip
-    # one equipped item per slot: unequip the others, then equip this one
-    (character ? character.items : []).each do |item|
-      next if item == self
-      if item.respond_to?(:slot) and item.slot == self.slot and item.equipped
-        item.equipped = nil
-        item.save
+    if character_id
+      Equipment.all(character_id: character_id, slot: slot, equipped: true, :id.not => id).each do |other|
+        other.update(equipped: nil)
       end
     end
-    self.equipped = true
-    save
+    update(equipped: true)
   end
 end
 
 class Weapon < Equipment
-  around_create do
+  before :create do
     self.slot = [:hand, :hands].sample
   end
   def damage; base_damage; end
@@ -269,35 +261,35 @@ class Wand < Weapon
   include RangedWeapon
   @damage = 2
   @range = 4
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:wood, :iron, :steel, :silver, :gold] end
   end
 end
 
 class Axe < Weapon
   @damage = 4
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class Sword < Weapon
   @damage = 5
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class Dagger < Weapon
   @damage = 3
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class Mace < Weapon
   @damage = 4
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
@@ -306,7 +298,7 @@ class Bow < Weapon
   @damage = 3
   @range = 5
   include RangedWeapon
-  after_initialize do
+  after_build do
     unless self.material then self.material = :wood end
   end
 end
@@ -315,7 +307,7 @@ class Sling < Weapon
   include RangedWeapon
   @damage = 2
   @range = 3
-  after_initialize do
+  after_build do
     unless self.material then self.material = :leather end
   end
 end
@@ -329,14 +321,14 @@ class Armor < Equipment
 end
 
 class Shield < Armor
-  after_initialize do
+  after_build do
     unless self.material then self.material = :wood end
   end
 end
 
 class MetalShield < Armor
   @defense = 2
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
@@ -346,46 +338,46 @@ end
 
 class LeatherArmor < BodyArmor
   @defense = 2
-  after_initialize do
+  after_build do
     unless self.material then self.material = :leather end
   end
 end
 
 class Chainmail < BodyArmor 
   @defense = 3
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class PlateArmor < BodyArmor
   @defense = 4
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:iron, :steel, :silver, :gold] end
   end
 end
 
 class HeadArmor < Armor
   @defense = 1
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:leather, :iron, :steel] end
   end
 end
 
 class Accessory < Equipment
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:leather, :iron, :steel, :silver, :gold] end
   end
 end
 
 class Ring < Accessory
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:silver, :gold] end
   end
 end
 
 class Necklace < Accessory
-  after_initialize do
+  after_build do
     unless self.material then self.material = [:leather, :silver, :gold] end
   end
 end

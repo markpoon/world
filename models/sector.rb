@@ -1,13 +1,11 @@
 
 class Sector
-  include DataMapper::Resource
+  include GameModel
   include Coordinates
-  has_many :locations
-  has_and_belongs_to_many :factions
-  validates_length_of :locations, minimum: 100, maximum: 100
-  validates_presence_of :locations
-  field :p, as: :prefix, type: Symbol
-  field :s, as: :suffix, type: Symbol
+  has n, :locations
+  has n, :factions, through: DataMapper::Resource
+  symbol :prefix
+  symbol :suffix
   def name
     [prefix, suffix].map(&:to_s).join(" ")
   end
@@ -25,7 +23,7 @@ class Sector
   end
   def location_distribution
     distribution, location_types = {}, []
-    locations.only(:_type).each{|i| location_types << i._type.intern}
+    locations.each { |tile| location_types << tile.class.name.to_sym }
     [:Plain, :Forest, :ForestHill, :Hill, :Mountain, :Lake, :Sea].each do |i|
       distribution[i] = location_types.count i
     end
@@ -37,7 +35,7 @@ class Sector
   def events
     locations.map(&:events).flatten.compact
   end
-  after_create do
+  after :create do
     puts "Generated #{self.name}, #{self.coordinates}"
   end
 end

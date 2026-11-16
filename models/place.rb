@@ -1,31 +1,35 @@
 class Place
-  include DataMapper::Resource
+  include GameModel
   include Resources
   include CreatesEvents
-  field :s, as: :soldiers, type: Integer
-  belongs_to :family
-  belongs_to :location
-  validates_associated :location
-  belongs_to :owner, inverse_of: :holdings, class_name: "Character"
+  property :soldiers, Integer, required: false
+  belongs_to :family, required: false
+  belongs_to :location, required: false
+  belongs_to :owner, 'Character', required: false
   def portrait
     self.class.to_s
   end
   def name; self.class.to_s; end
+  # Starts an event of this building's kind, on a nearby tile of the right terrain.
   def create_event(target_location=nil)
     self.reload if self.location == nil
-    if target_location.nil? and !self.class.event_location.nil?
-      target_location = self.class.event_location.near(coordinates: self.location.coordinates).max_distance(c: 0.005).sample
+    wanted = self.class.event_location
+    if target_location.nil? and !wanted.nil?
+      nearby = Location.within(location.coordinates, 0.005).select { |tile| tile.is_a?(wanted) }
+      target_location = nearby.sample
     else
       target_location = self.location
     end
-    binding.pry if target_location.nil?
     location.events << super(target_location)
     location.save
     location.events.last
   end
-  PUBLIC_JSON = {:only => [:_id, :_type, :name, :family_id, :owner_id, :rw, :rg, :ro, :ra, :rf]}
-  def as_json(options={})
-    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+
+  # What the browser gets for a building: its id, kind (_type), name and resources.
+  def as_json(*)
+    names = [:id, :_type, :name, :family_id, :owner_id, :wood, :ore, :food, :water]
+    names << :gold if respond_to?(:gold)
+    serialize(*names)
   end
 end
 
@@ -33,14 +37,14 @@ end
 module Employment
   def self.included(reciever)
     reciever.class_eval do
-      has_many :employees, inverse_of: :employed, class_name: "Character"
+      has n, :employees, 'Character', child_key: [:employed_id]
     end
   end
 end
 module Occupancy
   def self.included(reciever)
     reciever.class_eval do
-      has_many :residents, inverse_of: :residence, class_name: "Character"
+      has n, :residents, 'Character', child_key: [:residence_id]
     end
   end
 end
@@ -71,8 +75,8 @@ class Stockpile < Place
   include Employment
   def gather(entity, supply)
     amount = -self.employees.count
-    if self.location.inc(amount, supply)
-      entity.inc(amount, supply)
+    if self.location.inc(supply, amount)
+      entity.inc(supply, amount)
     else
       puts "resource exhausted at #{self.location.coordinates}"
     end
@@ -143,9 +147,9 @@ class Inn < Lodging
   def stay(character, cost)
     return if (character or cost) == nil
     if character.gold - cost > 0
-      character.inc(-cost, :gold)
+      character.inc(:gold, -cost)
       character.rest
-      self.gold.inc(cost, :gold)
+      inc(:gold, cost)
     else
       puts "not enough gold"
     end

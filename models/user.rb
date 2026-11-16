@@ -1,48 +1,41 @@
 
 class User
-  include DataMapper::Resource
+  include GameModel
   include Entity
   include Targetting
-  PUBLIC_JSON = {:only => [:_id, :n, :faction_id], :methods => [:vision, :coordinates]}
 
-  has_many :characters, dependent: :nullify
-  belongs_to :faction, dependent: :nullify
+  has n, :characters
+  belongs_to :faction, required: false
+
+  property :email, String, required: false, length: 255
+  property :salt, String, required: false, length: 255
+  property :hashed_password, String, required: false, length: 255
+
+  # An account always has a start tile, a well-formed email and a password hash.
+  EMAIL_FORMAT = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
+  validates_presence_of :location, message: 'A user needs a start tile.'
+  validates_presence_of :email, :hashed_password
+  validates_format_of :email, with: EMAIL_FORMAT, message: 'Email is not valid.'
+
+  property :energy, Integer, required: false, default: proc { |_r, _p| random 15, 30 }
+  property :vision, Integer, required: false
   
-  field :e, as: :email, type: String
-  field :s, as: :salt, type: String
-  field :h, as: :hashed_password, type: String
-  
-  # Real validations (the Mongoid-era declarations are no-ops under DataMapper):
-  # an account always has a start tile, an email and a password hash.
-  [[:location, ->(u) { u.location }], [:email, ->(u) { u.email }],
-   [:hashed_password, ->(u) { u.hashed_password }]].each do |attr, getter|
-    validates_with_block(attr) do
-      getter.call(self).to_s.empty? && !getter.call(self).respond_to?(:id) ? [false, "#{attr} must not be blank"] : true
-    end
-  end
-  validates_with_block(:email) do
-    User.normalize_email(email) =~ /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/ ? true : [false, 'email is not valid']
-  end
-  
-  field :n, as: :energy, type: Integer, default: ->{random 15, 30}
-  field :v, as: :vision, type: Integer
-  
-  field :l, as: :slots, type: Integer
+  property :slots, Integer, required: false
     
-  def vision; self.v||5;end
-  def slots;self.l||1;end
+  def vision; attribute_get(:vision) || 5; end
+  def slots; attribute_get(:slots) || 1; end
   def nearby_location(distance = 5)
-    potential_locations = (locations_in_circle self.location, distance).all.sample(15)
+    potential_locations = locations_in_circle(location, distance).to_a.sample(15)
     candidate_location = potential_locations.pop
     while potential_locations.length > 0 and ![Sea, Lake, Mountain].include? candidate_location.class do
       candidate_location = potential_locations.pop
     end
     candidate_location
   end
-  after_create do
+  after :create do
     puts "#{self.email} has joined the game, they're at #{self.location.coordinates}"
     # Pony.mail(to: self.email, subject: "Welcome to the Cosmic Dream #{self.email}", body: "Don't forget that your password is \"#{@password}\"")
-    self.characters.create!(location: nearby_location)
+    self.characters.create(location: nearby_location)
   end
   # Emails are case-insensitive: store them trimmed and lower-cased.
   def self.normalize_email(email); email.to_s.strip.downcase; end
@@ -59,7 +52,7 @@ class User
   def bcrypt_hash?; hashed_password.to_s.start_with?('$2'); end
 
   def self.authenticate(email, pass)
-    u = User.find_by(email: User.normalize_email(email))
+    u = User.first(email: User.normalize_email(email))
     return nil if u.nil?
     pass = pass.to_s
     if u.bcrypt_hash?
@@ -77,8 +70,8 @@ class User
     World.ensure_area(*location.coordinates, vision + 1)
     characters.each { |c| World.ensure_area(*c.location.coordinates, (c.vision || 1) + 1) if c.location }
     response = {}
-    response["users"] = [self.as_json]
-    visible = (self.characters.collect(&:sight) << super).flatten.compact.uniq
+    response["users"] = [as_json]
+    visible = (characters.collect(&:sight) << super).flatten.compact.uniq
     World.preload_places(visible)
     response["locations"] = visible.as_json
     response["characters"] = self.characters.collect(&:as_json)
@@ -86,8 +79,8 @@ class User
     # locations = sectors.collect(&:locations).flatten.compact
     return response
   end
-  def as_json(options = PUBLIC_JSON)
-    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  def as_json(*)
+    serialize(:id, :energy, :faction_id, :vision, :coordinates)
   end
     
   protected

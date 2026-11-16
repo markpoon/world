@@ -1,7 +1,7 @@
 class Generate
   extend Targetting
   def self.item(klass=Item, n=1)
-    if klass.class == Fixnum
+    if klass.is_a?(Integer)
       n = klass
       klass = Item
     end
@@ -19,7 +19,7 @@ class Generate
   end
   def self.event(klass=nil, origin=nil, target=nil)
     if klass == nil    
-      if origin.places?
+      if origin && !origin.places.empty?
         klass = Urban
       else
         klass = Wild
@@ -32,7 +32,7 @@ class Generate
     if klass.class == Array
       t = []
       klass.each do |task|
-        t << Generate.decide_type(klass).new
+        t << Generate.decide_type(task).new
       end
     else
       t = Generate.decide_type(klass).new
@@ -65,17 +65,16 @@ class Generate
       options = [Wild]
     end
     e = Generate.event(options.sample, l)
-    e.save!
+    e.save
     klass.objectives << Objective.new(event: e)
   end
   def self.chapter(journey, klass)
-    binding.pry
     journey.chapters << Generate.decide_type(klass).new 
   end
   def self.decide_type(klass)
     klass = klass.sample if klass.class == Array
-    while !klass.subclasses.empty?
-      klass = klass.subclasses.sample
+    while !klass.descendant_classes.empty?
+      klass = klass.descendant_classes.sample
     end
     klass
   end

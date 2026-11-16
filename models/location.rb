@@ -1,40 +1,48 @@
 class Location
-  include DataMapper::Resource
+  include GameModel
   include Coordinates
-  index({c: "2d"}, {min: -180, max: 180, unique: true, background: true})
-  belongs_to :sector
-  belongs_to :faction
-  has_many :places
-  has_many :users
-  has_many :characters
-  has_many :events
+  belongs_to :sector, required: false
+  belongs_to :faction, required: false
+  has n, :places
+  has n, :users
+  has n, :characters
+  has n, :events
 
   def terrain
-    self.class.intern unless self.class == Location
+    self.class.name.to_sym unless self.class == Location
   end
 
-  PUBLIC_JSON = {:except => [:faction_id, :sector_id, :_id], :methods => [:_type, :c], :include => {:places => Place::PUBLIC_JSON}}
+  # Tiles within `radius` degrees of `center` ([lng, lat]), as a collection.
+  def self.within(center, radius)
+    box = all(:cx.gte => center[0] - radius, :cx.lte => center[0] + radius,
+              :cy.gte => center[1] - radius, :cy.lte => center[1] + radius)
+    ids = box.select { |tile| Math.hypot(tile.cx - center[0], tile.cy - center[1]) <= radius }.map(&:id)
+    all(id: ids)
+  end
 
   # set by World.preload_places so a whole map is serialized without per-tile queries
   attr_writer :preloaded_places
 
+  # Buildings are read back through their own class (Farm, Inn, ...): see
+  # World.preload_places for why.
   def buildings
     @preloaded_places || places.map { |place| place.class.get(place.id) }
   end
 
-  def as_json(options = PUBLIC_JSON)
-    options = options.dup
-    place_options = options.delete(:include)
-    json = super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
-    if place_options && !(list = buildings).empty?
-      json['places'] = list.map { |place| place.as_json(place_options[:places]) }
-    end
+  # What the browser gets for a tile: id, terrain type (_type), coordinates (c),
+  # the tile's resource (land only) and its buildings.
+  def as_json(*)
+    names = [:id, :_type]
+    names << :resource if respond_to?(:resource)
+    json = serialize(*names, c: :coordinates)
+    list = buildings
+    json['places'] = list.map(&:as_json) unless list.empty?
     json
   end
 end
 
 class Land < Location
-  field :r, as: :resource, type: Integer, default: ->{random 9999, 99999}
+  property :resource, Integer, required: false, default: proc { |_r, _p| random 9999, 99999 }
 
   def give_resource_to(entity, resource=nil)
     modifier = 1

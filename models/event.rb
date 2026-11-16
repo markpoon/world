@@ -1,9 +1,9 @@
 module Taskable
   def self.included base 
     base.class_eval do
-      field :t, as: :target, type: Moped::BSON::ObjectId
-      field :c, type: String
-      field :d, as: :completed, type: Boolean, default: nil
+      property :target_id, Integer, required: false   # what this event/task is about
+      property :target_type, String, required: false, length: 255 # ...and which kind of record that is
+      property :completed, Boolean, required: false
     end
     base.extend DefaultTask
   end
@@ -19,18 +19,18 @@ module Taskable
     self.tasks 
   end
   def to_s
-    tasks.collect{|task| task.to_s }.join('. ') if tasks?
+    tasks.collect{|task| task.to_s }.join('. ') unless tasks.empty?
   end
     
   def complete
     if complete? and completed
       after_complete
-      completed = true
-    end 
+      self.completed = true
+    end
   end
   def complete?
     progress = 0 if progress.nil?
-    if (!tasks? and progress >= 100) or (tasks.all?(&:complete?) and progress >= 100)
+    if (tasks.empty? and progress >= 100) or (tasks.all?(&:complete?) and progress >= 100)
       true
     else
       false
@@ -41,31 +41,28 @@ module Taskable
   end
   def target=(target)
     return if target.nil? or !target.respond_to?(:id)
-    self.t = target.id
-    self.c = target.class.to_s
+    self.target_id = target.id
+    self.target_type = target.class.to_s
   end
   def target
-    return if (c or t) == nil
-    c.constantize.find(t)
+    return if target_id.nil? || target_type.nil?
+    target_type.constantize.get(target_id)
   end
 end
 
 class Event
-  include DataMapper::Resource
-  include Mongoid::Timestamps::Created
+  include GameModel
   include Challenge
   include Taskable
-  embeds_many :tasks, as: :assignment, store_as: :a
-  belongs_to :location
-  has_and_belongs_to_many :journeys
-  after_initialize do
-    unless persisted?
-      generate_tasks
-      add_reward
-      add_npc
-    end
+  has n, :tasks
+  belongs_to :location, required: false
+  has n, :journeys, through: DataMapper::Resource
+  after_build do
+    generate_tasks
+    add_reward
+    add_npc
   end
-  before_save do
+  before :save do
     complete if complete?
   end
   def characters
@@ -85,7 +82,7 @@ end
 class Wild < Event
 end
 class Supply < Event
-  field :x, as: :count, type: Integer, default: ->{random 10}
+  property :count, Integer, required: false, default: proc { |_r, _p| random 10 }
   def after_complete
     location.inc(:resource, -count)
     target.inc(self.supply, count)
@@ -117,12 +114,12 @@ class Excavating < Supply
 end
   
 class Travellers < Wild
-  after_initialize do
+  after_build do
     if target.nil? and location and location.sector
       self.target = location.sector.locations.sample
     end
   end
-  after_update do
+  after :update do
     self.complete if arrived?
   end
   def arrived?;
@@ -148,7 +145,7 @@ class Refugees < Travellers
   @tasks_default = [['Resourcing', 'Negotiation', 'Courier', 'Combat'].sample]
 end
 class Construction < Event
-  field :p, as: :place, type: String, default: ->{["House", "Home", "Farm"].sample}
+  property :place, String, required: false, length: 255, default: proc { |_r, _p| ["House", "Home", "Farm"].sample }
   @tasks_default = random(6).times.collect{['Resourcing', 'Courier'].sample}
   def complete
   end
@@ -156,7 +153,7 @@ end
 class Urban < Event
 end
 class UrbanPlace <  Event
-  after_initialize do
+  after_build do
     if target.nil?
       self.target = self.location.places.sample
     end
@@ -200,19 +197,18 @@ class Assassinate < War
 end
 
 class Task
-  include DataMapper::Resource
+  include GameModel
   include Taskable
-  embeds_many :tasks, as: :assignment, store_as: :a
-  embedded_in :assignment, polymorphic: true
-  field :p, as: :progress, type: Integer
-  after_initialize do
-    unless persisted?
-      generate_tasks
-    end
+  # a task belongs to an event, or is a sub-task of another task
+  belongs_to :event, required: false
+  belongs_to :parent, 'Task', required: false
+  has n, :tasks, 'Task', child_key: [:parent_id]
+  property :progress, Integer, required: false
+  after_build do
+    generate_tasks
   end
   def complete?
-    binding.pry if self.p.class == Symbol
-    self.p != nil and self.p > 100 ? (true) : (false) 
+    !progress.nil? && progress > 100
   end
   def to_s
     phrase = ["#{self.class.humanize.capitalize}"]
@@ -226,25 +222,24 @@ class Task
     when self.respond_to?(:destination) 
       phrase << "to #{self.destination||'[destination not found]'}"
     end
-    phrase << self.progress
+    phrase << progress_text
     unless tasks.empty?
       phrase << "it has tasks: "
       phrase << self.tasks.collect(&:to_s)
     end
     phrase.join(', ')
   end
-  def progress
-    "and is #{p||0}% complete."
+  def progress_text
+    "and is #{progress || 0}% complete."
   end
 end
 
 class Resourcing < Task
-  field :x, as: :count, type: Integer, default: ->{random 25}
-  field :r, as: :resource, type: Symbol, default: ->{[:wood, :ore, :food, :water].sample}
+  property :count, Integer, required: false, default: proc { |_r, _p| random 25 }
+  symbol :resource, default: proc { |_r, _p| [:wood, :ore, :food, :water].sample }
 
-  around_create do
-    binding.pry
-    self.target = assignment
+  before :create do
+    self.target = parent || event
   end
 end
 class Trade < Resourcing
@@ -258,18 +253,19 @@ class Theft < Resourcing
 end
 class Craft < Task
   @tasks_default = random(3).times.collect{['Courier', 'Procure'].sample} 
-  before_create do
-    target = Item.subclasses.sample.to_s
+  property :item, String, required: false, length: 255 # the kind of item to craft
+  before :create do
+    self.item = Item.descendant_classes.sample.to_s
   end
   def after_complete
-    Generate(target.constantize, count)
+    Generate.item(item.constantize)
   end
 end
 
 class Courier < Task
-  field :d, type: Moped::BSON::ObjectId
-  def destination= location;self.d = location.coordinates;end
-  def destination;Location.find_by(coordinates: self.d);end
+  list :destination_coordinates
+  def destination=(location); self.destination_coordinates = location.coordinates; end
+  def destination; Location.at(destination_coordinates) unless destination_coordinates.empty?; end
   def delivered?
     return true if target.location == destination
   end
@@ -294,7 +290,7 @@ class Pursue < Courier
 end
 
 class Diplomacy < Task
-  field :e, as: :entities, type: Moped::BSON::ObjectId
+  property :entities, Integer, required: false
 end
 class Negotiation < Diplomacy
   # def to_s
@@ -304,7 +300,7 @@ end
 class Embargo < Diplomacy
   # an order of a government prohibiting the departure of commercial ships and 
   # other vehicles from its ports. It is a legal prohibition on commerce.
-  field :pr, as: :prohibits, type: Symbol, default: ->{[:food, :ore, :wood, :items].sample}
+  symbol :prohibits, default: proc { |_r, _p| [:food, :ore, :wood, :items].sample }
   # def to_s
   #   "#{self.entities} seek to implement a #{self.prohibits} #{self.class} against #{self.target}"
   # end
@@ -319,14 +315,14 @@ class Treaty < Diplomacy
   # end
 end
 class Borders < Treaty
-  field :o, as: :open?, type: Boolean, default: true
+  property :open, Boolean, required: false, default: true
   # def to_s
   #   "#{open? ? ("Open") : ("Closed")} #{self.class} between #{self.entities} to #{self.target}"
   # end
 end
 class Tariff < Treaty
-  field :g, as: :goods, type: Symbol, default: ->{[:food, :ore, :wood, :items].sample}
-  field :t, as: :tax, type: Integer, default: ->{random(1,5)}
+  symbol :goods, default: proc { |_r, _p| [:food, :ore, :wood, :items].sample }
+  property :tax, Integer, required: false, default: proc { |_r, _p| random(1,5) }
   # def to_s
   #   "A #{self.tax} gold #{self.class} between #{self.entities} on all #{self.goods}"
   # end
@@ -367,7 +363,7 @@ end
 class Capture < CombatAggressive
 end
 class CombatCount < Combat
-  field :x, as: :count, type: Integer, default: ->{random 5, 10}
+  property :count, Integer, required: false, default: proc { |_r, _p| random 5, 10 }
 end
 class Rally < CombatCount
 end

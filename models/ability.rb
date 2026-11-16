@@ -1,17 +1,17 @@
 
 class Ability
-  include DataMapper::Resource
+  include GameModel
   
-  field :n, as: :name, type: String
-  field :r, as: :range, type: Integer
-  field :a, as: :area, type: Integer
+  property :name, String, required: false, length: 255
+  property :range, Integer, required: false
+  property :area, Integer, required: false
   
-  field :e, as: :effect, type: Symbol
-  field :v, as: :value, type: Integer
-  field :d, as: :duration, type: Integer
+  symbol :effect
+  property :value, Integer, required: false
+  property :duration, Integer, required: false
   
-  field :t, as: :cost_type, type: Symbol
-  field :c, as: :cost, type: Integer
+  symbol :cost_type
+  property :cost, Integer, required: false
 
   def teach(character)
     character.abilities << self
@@ -27,9 +27,8 @@ class Ability
     end
     origin.inc(cost_type, cost)
   end
-  PUBLIC_JSON = {}
-  def as_json(options={})
-    super(options).reject{|k, v| v.nil?||if v.class == Array then v.empty?; end}
+  def as_json(*)
+    serialize(:id, :name, :range, :area, :effect, :value, :duration, :cost_type, :cost)
   end
   private
   def affect(target)

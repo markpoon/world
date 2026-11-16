@@ -8,7 +8,7 @@ require "set"
 require "./modules"
 require "data_mapper"
 
-require "./lib/mongoid_compat"
+require "./lib/game_model"
 require "./models/models.rb"
 require "./lib/world_generator"
 require "./lib/seed"
@@ -62,7 +62,6 @@ class Sphere < Sinatra::Base
     end
   end
 
-  MongoidCompat.finalize!
   DataMapper.finalize.auto_upgrade!
   puts "Cosmic Dream starting: #{AppEnv.summary}"
   Seed.demo_user! if AppEnv.seed_demo_user?
