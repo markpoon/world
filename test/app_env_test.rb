@@ -68,7 +68,7 @@ class AppEnvTest < WorldTest
 
   def test_flags_hash_and_summary
     env('RENDER' => 'true') do
-      assert_equal %i[debug_routes show_errors reload_code seed_demo_user load_overture], AppEnv.flags.keys
+      assert_equal %i[debug_routes show_errors reload_code seed_demo_user load_overture overture_live geoip], AppEnv.flags.keys
       assert_match(/env=development on_render=true/, AppEnv.summary)
       assert_match(/debug_routes=false/, AppEnv.summary)
     end

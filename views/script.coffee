@@ -677,6 +677,10 @@ document.addEventListener "DOMContentLoaded", ->
       success: ->
         console.log "Maps Response Recieved"
         root.authenticated = true
+        # the map is drawn around the player's own start, wherever in the world that is
+        start = @responseJSON?.users?[0]?.coordinates
+        root.center = [parseFloat(start[0].toFixed 3), parseFloat(start[1].toFixed 3)] if start
+        watchRegion @responseJSON?.region, start
         ui = document.querySelector("#ui")
         fade ui, "out", -> ui?.remove()
         Crafty.scene "main"
@@ -793,7 +797,7 @@ document.addEventListener "DOMContentLoaded", ->
 
   t2c = (coordinates) ->
     x = parseFloat((parseFloat(root.center[0].toFixed(3)) + (coordinates[0] - root.delta) / 1000).toFixed 3)
-    y = parseFloat(( parseFloat(root.center[0].toFixed(3)) + coordinates[1] / 1000).toFixed 3)
+    y = parseFloat(( parseFloat(root.center[1].toFixed(3)) + coordinates[1] / 1000).toFixed 3)
     [x, y]
     
   random=(i)->
@@ -953,12 +957,77 @@ document.addEventListener "DOMContentLoaded", ->
       success: ->
         fresh = (l for l in (@responseJSON?.locations or []) when not root.loaded["#{c2t(l.c)[0]},#{c2t(l.c)[1]}"])
         generateLocations fresh if fresh.length > 0
+        watchRegion @responseJSON?.region, [lng, lat]
       failure: (e) ->
         console.log "Could not explore: #{e}"
       complete: ->
         exploring = false
     return
   
+  # --- Where in the world are you? -----------------------------------------
+  # Before there is an account: ask the browser for the visitor's position, and
+  # if it cannot or will not say, ask the server to guess from the network
+  # address. The answer becomes the start of a new account (root.center), and
+  # the server starts fetching the real places around it.
+  useCenter = (coordinates) ->
+    return if root.authenticated or not coordinates
+    root.center = [parseFloat(coordinates[0].toFixed 3), parseFloat(coordinates[1].toFixed 3)]
+    console.log "Starting position: #{root.center}"
+
+  locateByAddress = ->
+    ajax.get "/locate",
+      success: -> useCenter @responseJSON?.coordinates
+      failure: -> console.log "Could not work out your position; using the default start."
+
+  detectLocation = ->
+    return locateByAddress() unless navigator.geolocation
+    navigator.geolocation.getCurrentPosition(
+      (position) ->
+        coordinates = [position.coords.longitude, position.coords.latitude]
+        useCenter coordinates
+        ajax.get "/locate", params: {lng: coordinates[0], lat: coordinates[1]} # starts loading places
+      ,
+      -> locateByAddress()
+      ,
+      {enableHighAccuracy: false, timeout: 6000, maximumAge: 600000})
+
+  # --- Real places arrive in the background --------------------------------
+  # When the server is still fetching the places around the player it says
+  # "loading". Check back every few seconds; once they are in, redraw the map.
+  watchRegion = (state, coordinates) ->
+    return unless state is "loading" and not root.watchingRegion
+    root.watchingRegion = true
+    tries = 0
+    poll = ->
+      params = if coordinates then {lng: coordinates[0], lat: coordinates[1]} else {}
+      ajax.get "/user/region",
+        params: params
+        success: ->
+          state = @responseJSON?.region
+          if state is "loading" and tries++ < 60
+            setTimeout poll, 4000
+          else
+            root.watchingRegion = false
+            if state is "ready"
+              refreshMap()
+              showToast "Real places nearby have been added to the map."
+        failure: -> root.watchingRegion = false
+    setTimeout poll, 3000
+
+  # Throw away the tiles and buildings and draw them again from the server
+  # (characters and the player stay where they are).
+  refreshMap = ->
+    ajax.get "/user/sight",
+      success: ->
+        for kind in ["Building", "Location"]
+          found = Crafty(kind)
+          ids = (found[n] for n in [0...found.length])
+          Crafty(id).destroy() for id in ids
+        root.loaded = {}
+        generateLocations @responseJSON?.locations or []
+        exploring = false
+        exploreAround root.player.mapx, root.player.mapy if root.player
+
   generatePlaces=(places, coordinates) ->
     for place in places
       [x, y] = c2t coordinates
@@ -1078,4 +1147,4 @@ document.addEventListener "DOMContentLoaded", ->
     (tile for tile in b when tile.coordinates.toString() in a)
 
   Crafty.scene "loading"
-  
+  detectLocation()

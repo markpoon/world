@@ -82,7 +82,7 @@ class ApiTest < WorldTest
     assert_equal 'development', json['environment']
     assert_equal ENV['TEST_DATABASE_URL'] ? 'postgres' : 'sqlite', json['database']
     assert_equal 9, json['tiles']
-    assert_equal %w[debug_routes load_overture reload_code seed_demo_user show_errors], json['flags'].keys.sort
+    assert_equal %w[debug_routes geoip load_overture overture_live reload_code seed_demo_user show_errors], json['flags'].keys.sort
     refute_includes last_response.body, 'DATABASE_URL'
     refute_includes last_response.body.downcase, 'secret'
   end
@@ -206,7 +206,7 @@ class ApiTest < WorldTest
     make_user
     login_as 'player@example.com', 'a good passphrase'
     assert_equal 200, last_response.status
-    assert_equal %w[characters locations users], json.keys.sort
+    assert_equal %w[characters locations region users], json.keys.sort
     assert_operator json['locations'].size, :>, 20
     assert_equal 1, json['characters'].size
 

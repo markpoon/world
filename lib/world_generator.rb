@@ -41,8 +41,10 @@ module World
   def self.elevation(ix, iy); 0.65 * noise(ix, iy, 14, 'elevation') + 0.35 * noise(ix, iy, 5, 'elevation2'); end
   def self.moisture(ix, iy);  0.70 * noise(ix, iy, 10, 'moisture')  + 0.30 * noise(ix, iy, 4, 'moisture2');  end
 
-  def self.spawn_clearing?(ix, iy)
-    (ix - SPAWN[0]).abs <= 1 && (iy - SPAWN[1]).abs <= 1
+  # `spawn` is the grid position the clearing is built around: the default
+  # start, or (see ensure_start) wherever a new player actually begins.
+  def self.spawn_clearing?(ix, iy, spawn = SPAWN)
+    (ix - spawn[0]).abs <= 1 && (iy - spawn[1]).abs <= 1
   end
 
   # Near the spawn point the land is eased toward gentle terrain (no deep water,
@@ -51,17 +53,17 @@ module World
   FRIENDLY_OUTER  = 12.0 # ...and where it fades out completely
   FRIENDLY_PULL   = 0.5  # how far elevation is pulled toward 0.5 at the centre
 
-  def self.friendly_elevation(ix, iy, e)
-    d = Math.hypot(ix - SPAWN[0], iy - SPAWN[1])
+  def self.friendly_elevation(ix, iy, e, spawn = SPAWN)
+    d = Math.hypot(ix - spawn[0], iy - spawn[1])
     t = ((d - FRIENDLY_INNER) / (FRIENDLY_OUTER - FRIENDLY_INNER)).clamp(0.0, 1.0)
     t = t * t * (3 - 2 * t)
     pull = FRIENDLY_PULL * (1 - t)
     e * (1 - pull) + 0.5 * pull
   end
 
-  def self.terrain_for(ix, iy)
-    return Plain if spawn_clearing?(ix, iy)
-    e = friendly_elevation(ix, iy, elevation(ix, iy))
+  def self.terrain_for(ix, iy, spawn = SPAWN)
+    return Plain if spawn_clearing?(ix, iy, spawn)
+    e = friendly_elevation(ix, iy, elevation(ix, iy), spawn)
     m = moisture(ix, iy)
     return Sea  if e < 0.30
     return Lake if e < 0.35 && m > 0.50
@@ -85,9 +87,9 @@ module World
   }.freeze
   PLACE_CHANCE = 0.07
 
-  def self.place_for(terrain, ix, iy)
+  def self.place_for(terrain, ix, iy, spawn = SPAWN)
     choices = PLACES[terrain.name]
-    return nil if spawn_clearing?(ix, iy)
+    return nil if spawn_clearing?(ix, iy, spawn)
     return nil unless choices && lattice(ix, iy, 'place') < PLACE_CHANCE
     Object.const_get(choices[(lattice(ix, iy, 'kind') * choices.size).floor])
   end
@@ -120,12 +122,12 @@ module World
   # Real places (Overture Maps, see lib/overture.rb) take priority over invented
   # ones. Where a region of real data has been loaded, tiles with no real place
   # stay empty rather than getting a made-up building.
-  def self.build_place(tile, terrain, ix, iy, poi, covered)
+  def self.build_place(tile, terrain, ix, iy, poi, covered, spawn = SPAWN)
     if poi
       Object.const_get(poi.building).create(location: tile, title: poi.name, category: poi.category,
                                             source: 'overture', source_id: poi.overture_id)
     elsif !covered
-      klass = place_for(terrain, ix, iy)
+      klass = place_for(terrain, ix, iy, spawn)
       klass.create(location: tile) if klass
     end
   end
@@ -140,7 +142,7 @@ module World
       build_place(tile, tile.class, ix, iy, poi, covered)
     elsif covered
       current.each(&:destroy)
-    elsif current.empty?
+    elsif current.empty? && !tile.clearing # (a start clearing is meant to be empty)
       build_place(tile, tile.class, ix, iy, nil, false)
     end
   end
@@ -148,7 +150,7 @@ module World
   # Make sure every tile within `radius` of (lng, lat) exists, and that tiles
   # created by earlier versions of the generator have the buildings the
   # generator says they should. Safe to call often. Returns tiles created.
-  def self.ensure_area(lng, lat, radius = 5)
+  def self.ensure_area(lng, lat, radius = 5, spawn = SPAWN)
     radius = [[radius.to_i, 0].max, MAX_RADIUS].min
     cx, cy = grid(lng, lat)
     LOCK.synchronize do
@@ -169,16 +171,17 @@ module World
           (-radius..radius).each do |dy|
             ix = cx + dx
             iy = cy + dy
-            poi = spawn_clearing?(ix, iy) ? nil : pois[[ix, iy]]
-            covered = !poi.nil? || regions.any? { |region| region.covers?(ix, iy) }
+            poi = spawn_clearing?(ix, iy, spawn) ? nil : pois[[ix, iy]]
+            covered = !poi.nil? || regions.any? { |region| !region.sparse && region.covers?(ix, iy) }
             if (tile = existing[[ix, iy]])
               sync_place(tile, ix, iy, poi, covered, places[tile.id] || [])
               next
             end
-            terrain = terrain_for(ix, iy)
+            terrain = terrain_for(ix, iy, spawn)
             terrain = Plain if poi && BLOCKING.include?(terrain.name) # real places sit on land
-            tile = terrain.create(cx: ix / SCALE.to_f, cy: iy / SCALE.to_f)
-            build_place(tile, terrain, ix, iy, poi, covered)
+            tile = terrain.create(cx: ix / SCALE.to_f, cy: iy / SCALE.to_f,
+                                  clearing: spawn != SPAWN && spawn_clearing?(ix, iy, spawn))
+            build_place(tile, terrain, ix, iy, poi, covered, spawn)
             created += 1
           end
         end
@@ -203,5 +206,34 @@ module World
     ).to_a
     preload_places(tiles)
     { created: created, tiles: tiles }
+  end
+
+  # Where a new player begins. Anywhere in the world is allowed, so the land
+  # around the start is made friendly first (like the default spawn): a 3x3
+  # clearing, easing out to gentle terrain, with no deep water or mountains
+  # next to it. If the area already exists the player simply joins it, standing
+  # on the nearest tile that can be walked on. Returns that tile.
+  START_RADIUS = 12
+  def self.ensure_start(lng, lat)
+    cx, cy = grid(lng, lat)
+    half = 0.5 / SCALE
+    near = Location.first(:cx.gte => (cx - 2) / SCALE.to_f - half, :cx.lte => (cx + 2) / SCALE.to_f + half,
+                          :cy.gte => (cy - 2) / SCALE.to_f - half, :cy.lte => (cy + 2) / SCALE.to_f + half)
+    near ? ensure_area(lng, lat, 6) : ensure_area(lng, lat, START_RADIUS, [cx, cy])
+    walkable_tile_near(cx, cy)
+  end
+
+  # The closest tile to (ix, iy) that is not sea, lake or mountain.
+  def self.walkable_tile_near(ix, iy, max = 6)
+    (0..max).each do |ring|
+      (-ring..ring).each do |dx|
+        (-ring..ring).each do |dy|
+          next unless [dx.abs, dy.abs].max == ring
+          tile = Location.first(cx: (ix + dx) / SCALE.to_f, cy: (iy + dy) / SCALE.to_f)
+          return tile if tile && !BLOCKING.include?(tile.class.name)
+        end
+      end
+    end
+    nil
   end
 end

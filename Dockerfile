@@ -2,8 +2,11 @@ FROM ruby:2.7-bullseye
 # Debian 11 has moved to the archive mirrors
 RUN sed -i 's|deb.debian.org|archive.debian.org|g; s|security.debian.org|archive.debian.org|g; /bullseye-updates/d' /etc/apt/sources.list 2>/dev/null || true \
     && apt-get -o Acquire::Check-Valid-Until=false update \
-    && apt-get install -y --no-install-recommends libpq-dev postgresql-server-dev-13 \
+    && apt-get install -y --no-install-recommends libpq-dev postgresql-server-dev-13 python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
+# DuckDB reads Overture Maps places for a player's area while the app runs (tools/fetch_overture.py)
+RUN pip3 install --no-cache-dir duckdb==1.4.5 \
+    && python3 -c "import duckdb; duckdb.connect().execute('INSTALL httpfs')"
 # JavaScript runtime for compiling CoffeeScript (ExecJS)
 COPY --from=node:16-bullseye-slim /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app

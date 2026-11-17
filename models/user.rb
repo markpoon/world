@@ -24,13 +24,11 @@ class User
     
   def vision; attribute_get(:vision) || 5; end
   def slots; attribute_get(:slots) || 1; end
+  # A tile within `distance` squares that a character can stand on (not sea,
+  # lake or mountain); the user's own tile if there is none.
   def nearby_location(distance = 5)
-    potential_locations = locations_in_circle(location, distance).to_a.sample(15)
-    candidate_location = potential_locations.pop
-    while potential_locations.length > 0 and ![Sea, Lake, Mountain].include? candidate_location.class do
-      candidate_location = potential_locations.pop
-    end
-    candidate_location
+    candidates = locations_in_circle(location, distance).to_a.sample(15)
+    candidates.find { |tile| ![Sea, Lake, Mountain].include?(tile.class) } || location
   end
   after :create do
     puts "#{self.email} has joined the game, they're at #{self.location.coordinates}"

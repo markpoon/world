@@ -7,6 +7,8 @@
 #   SHOW_ERRORS              full stack-trace pages instead of the generic 500 page
 #   RELOAD_CODE              Sinatra::Reloader
 #   SEED_DEMO_USER           create the demo account on boot
+#   OVERTURE_LIVE            fetch Overture places for the area a player is in, while the app runs (needs DuckDB)
+#   GEOIP                    guess a visitor's location from their IP address when the browser cannot say
 #   LOAD_OVERTURE            load the bundled Overture Maps places (data/overture) on boot; on by default
 #
 # The first three default to "on in development", but never on a public host
@@ -30,10 +32,13 @@ module AppEnv
   def self.reload_code?;    flag('RELOAD_CODE', local_dev?); end
   def self.seed_demo_user?; flag('SEED_DEMO_USER', false); end
   def self.load_overture?;  flag('LOAD_OVERTURE', true); end
+  def self.overture_live?;  flag('OVERTURE_LIVE', true); end
+  def self.geoip?;          flag('GEOIP', true); end
 
   def self.flags
     { debug_routes: debug_routes?, show_errors: show_errors?,
-      reload_code: reload_code?, seed_demo_user: seed_demo_user?, load_overture: load_overture? }
+      reload_code: reload_code?, seed_demo_user: seed_demo_user?, load_overture: load_overture?,
+      overture_live: overture_live?, geoip: geoip? }
   end
 
   def self.summary

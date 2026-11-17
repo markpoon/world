@@ -33,6 +33,8 @@ class PoiRegion
   property :east,    Float
   property :north,   Float
   property :places,  Integer
+  # a thinly mapped area (countryside, sea): the generator still invents buildings between real ones
+  property :sparse,  Boolean, default: false
   property :loaded_at, DateTime
 
   # Is this tile (grid position) inside the rectangle?

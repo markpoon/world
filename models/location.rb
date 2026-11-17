@@ -3,6 +3,8 @@ class Location
   include Coordinates
   belongs_to :sector, required: false
   belongs_to :faction, required: false
+  # the open ground around where a player began: the generator never builds on it
+  property :clearing, Boolean, required: false, default: false
   has n, :places
   has n, :users
   has n, :characters

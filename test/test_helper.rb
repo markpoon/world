@@ -15,6 +15,8 @@ ENV['ENABLE_DEBUG_ROUTES']  = 'false'
 ENV['SHOW_ERRORS']          = 'false'
 ENV['SEED_DEMO_USER']       = 'false'
 ENV['LOAD_OVERTURE']        = 'false' # tests load their own small POI files
+ENV['OVERTURE_LIVE']        = 'false' # no downloads from tests (they plug in a fake fetcher)
+ENV['GEOIP']                = 'false' # no lookups from tests (they plug in a fake provider)
 ENV['SESSION_SECRET']       = 'test-secret-test-secret-test-secret-test-secret-0123456789'
 TEST_DB_DIR = Dir.mktmpdir('world-test')
 # Set TEST_DATABASE_URL (e.g. postgres://user:pw@host/db) to run the suite on Postgres.
@@ -49,6 +51,11 @@ class WorldTest < Minitest::Test
       quoted.each { |t| adapter.execute("DELETE FROM #{t}") }
     end
     Sphere::SIGNUP_LOG.clear
+    Overture::Regions.reset!
+    Overture::Regions.fetcher = nil
+    Overture::Regions.inline = false
+    GeoIP.provider = nil
+    GeoIP.reset!
   end
 
   # Temporarily change environment variables inside the block.

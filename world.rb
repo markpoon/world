@@ -11,6 +11,7 @@ require "data_mapper"
 require "./lib/game_model"
 require "./models/models.rb"
 require "./lib/world_generator"
+require "./lib/geoip"
 require "./lib/overture"
 require "./lib/seed"
 require "./controllers/controllers.rb"
@@ -106,11 +107,18 @@ class Sphere < Sinatra::Base
       end
     end
 
-    # [lng, lat] from the browser, or the default start area when missing/invalid
+    # [lng, lat] from the browser; failing that, where the visitor's IP address
+    # says they are; failing that, the default start area
     def signup_coordinates(raw)
       lng, lat = Array(raw).first(2).map { |v| Float(v) rescue nil }
-      return Seed::CENTER unless lng && lat && lng.between?(-180, 180) && lat.between?(-85, 85)
-      [lng, lat]
+      return [lng, lat] if lng && lat && lng.between?(-180, 180) && lat.between?(-85, 85)
+      GeoIP.locate(request.ip) || Seed::CENTER
+    end
+
+    # Start fetching real places for the area around this point (in the
+    # background), and say how that is going: ready, loading, failed...
+    def region_status(lng, lat)
+      Overture::Regions.request(lng, lat, request.ip).to_s
     end
 
     def fail_with(code, *messages)
@@ -131,8 +139,7 @@ class Sphere < Sinatra::Base
     fail_with 429, 'Too many sign-ups from your network. Please try again later.' if signup_throttled?
 
     lng, lat = signup_coordinates(data['coordinates'])
-    World.ensure_area(lng, lat, 6)
-    tile = World.tile_at(lng, lat)
+    tile = World.ensure_start(lng, lat)
     fail_with 500, 'Could not find a starting position. Please try again.' unless tile
 
     user = nil
@@ -143,6 +150,7 @@ class Sphere < Sinatra::Base
       user.save
     end
     fail_with 500, 'Could not create your account. Please try again.' unless user.saved?
+    region_status(*tile.coordinates)
     status 201
     { id: user.id, email: user.email }.to_json
   end
@@ -156,6 +164,7 @@ class Sphere < Sinatra::Base
         status 200
         session[:user] = user.id
         u = user.sight
+        u['region'] = region_status(*user.location.coordinates)
         return u.to_json
       else
         status 401
@@ -176,7 +185,39 @@ class Sphere < Sinatra::Base
   get '/user/sight' do
     user = session[:user] && User.get(session[:user])
     halt 401, { error: 'Not logged in.' }.to_json unless user
-    user.sight.to_json
+    sight = user.sight
+    sight['region'] = region_status(*user.location.coordinates)
+    sight.to_json
+  end
+
+  # How is loading the real places around the player going? The browser asks
+  # until it says "ready", then redraws the map.
+  #   GET /user/region[?lng=&lat=]
+  get '/user/region' do
+    user = session[:user] && User.get(session[:user])
+    halt 401, { error: 'Not logged in.' }.to_json unless user
+    lng = Float(params['lng']) rescue nil
+    lat = Float(params['lat']) rescue nil
+    lng, lat = user.location.coordinates unless lng && lat
+    { region: Overture::Regions.status(lng, lat).to_s }.to_json
+  end
+
+  # Where in the world is this visitor? Used by the login screen before there is
+  # an account. The browser's own position (?lng=&lat=) is used when it has one;
+  # otherwise the visitor's IP address is looked up (see lib/geoip.rb). Either
+  # way the real places around that point start loading in the background.
+  get '/locate' do
+    content_type 'application/json'
+    lng = Float(params['lng']) rescue nil
+    lat = Float(params['lat']) rescue nil
+    if lng && lat && lng.between?(-180, 180) && lat.between?(-85, 85)
+      source = 'browser'
+    else
+      lng, lat = GeoIP.locate(request.ip)
+      source = 'ip'
+    end
+    halt 200, { coordinates: nil }.to_json unless lng && lat
+    { coordinates: [lng.round(3), lat.round(3)], source: source, region: region_status(lng, lat) }.to_json
   end
 
   # The player stepped onto a tile: build and return the squares next to it.
@@ -194,7 +235,7 @@ class Sphere < Sinatra::Base
       halt 400, { error: 'That is too far away.' }.to_json
     end
     result = World.populate_adjacent(lng, lat, params['reach'] || 1)
-    { created: result[:created], locations: result[:tiles].as_json }.to_json
+    { created: result[:created], region: region_status(lng, lat), locations: result[:tiles].as_json }.to_json
   end
 
   # What mode is the app in? Non-sensitive, so it can be left on in any mode.

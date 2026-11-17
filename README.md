@@ -19,6 +19,11 @@ the current environment and flags (and logs them once at boot).
 | `RELOAD_CODE` | `Sinatra::Reloader` | same as above |
 | `SEED_DEMO_USER` | create the demo account on boot (credentials in `lib/seed.rb`) | off |
 | `LOAD_OVERTURE` | load the bundled Overture Maps places (`data/overture/`) on boot | on |
+| `OVERTURE_LIVE` | fetch Overture places for the area a player is in, while the app runs (needs Python + `duckdb`) | on |
+| `GEOIP` | guess a visitor's position from their IP address when the browser cannot say | on |
+| `GEOIP_URL` | lookup service for `GEOIP` (JSON with `latitude`/`longitude`; `%{ip}` marks the address) | `https://ipwho.is/%{ip}` |
+| `OVERTURE_RELEASE` | which Overture release to read | see `lib/overture.rb` |
+| `OVERTURE_MAX_CELLS_PER_DAY` | cap on downloads per day | 40 |
 | `DATABASE_URL` | Postgres URL (SQLite in local development if unset) | |
 
 Players sign up from the login screen (`POST /user/signup`; passwords are bcrypt-hashed).
@@ -73,14 +78,29 @@ an Inn in the game, a bank a Hall, a park a Pasture, and so on (the rules are in
 `lib/overture.rb`). Each building keeps the real name and category, which the
 tooltip shows.
 
-* **Getting data.** Run once, by a developer, then commit the file:
-  `pip install duckdb && python3 tools/fetch_overture.py NAME WEST SOUTH EAST NORTH`
-  (for example `mississauga -79.80 43.52 -79.62 43.69`). It writes
-  `data/overture/NAME.csv.gz` and `NAME.json` (the box and the Overture release).
-  The server never calls Overture while running.
-* **Loading.** On boot every file in `data/overture/` that is not yet in the
-  database is loaded into `points_of_interest` (a newer release of the same file
-  replaces the old one). Set `LOAD_OVERTURE=false` to skip.
+* **Where the player is.** The login page asks the browser for the visitor's
+  position; if it cannot or will not say, `GET /locate` guesses from the IP address
+  (`lib/geoip.rb`; private addresses are never looked up, answers are cached for an
+  hour, and nothing is stored; `GEOIP=false` turns it off). The answer becomes the
+  start of a new account. `World.ensure_start` makes the land around any start
+  friendly (a 3x3 clearing, no deep water or mountains next to it), anywhere in
+  the world.
+* **Getting data, as players arrive.** The world is cut into 0.1 degree cells
+  (about 8 x 11 km). The first time a cell is needed (at `/locate`, sign-up, login,
+  and when walking close to a cell edge) `Overture::Regions` fetches it in a
+  background thread with `tools/fetch_overture.py` (Python + DuckDB reading
+  Overture's public files on S3; no key needed), keeping the three most trusted
+  places per tile, and stores it. Until it arrives (about half a minute) the
+  generator invents buildings; the browser polls `GET /user/region`, then redraws
+  the map with the real ones. Limits: one fetch at a time, 4 queued, 6 new cells
+  per requester per hour, 40 per day, a failed cell is retried after 10 minutes.
+  A cell with fewer than 50 places counts as sparse and keeps invented buildings
+  between the real ones. Dense cities are big (a downtown cell is tens of thousands
+  of rows), so watch the database size on a small plan.
+* **Data shipped with the app.** `data/overture/mississauga.csv.gz` (made with
+  `tools/fetch_overture.py mississauga -79.80 43.52 -79.62 43.69`) is loaded on boot
+  so the demo account starts instantly; more files can be added the same way.
+  `LOAD_OVERTURE=false` skips it.
 * **On the map.** The most trusted place on each 0.001 degree tile (about 100 m)
   becomes its building. Inside a loaded box only real places appear; outside it
   the generator still invents buildings. Real places never sit in the sea or on a
