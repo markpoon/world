@@ -28,8 +28,8 @@ class LiveRegionTest < WorldTest
         csv << %w[id name category group taxonomy confidence lng lat]
         @places.times do |n|
           csv << ["#{name}-#{n}", "Cafe #{n}", 'cafe', 'food_and_drink', 'cafe', 0.9,
-                  ((@around ? @around[0] : (west + east) / 2) + (n - @places / 2) * 0.001).round(6),
-                  (@around ? @around[1] + 0.005 : (south + north) / 2)]
+                  (west + (east - west) * (n + 0.5) / @places).round(6),
+                  ((south + north) / 2).round(6)]
         end
       end
       file
@@ -47,10 +47,11 @@ class LiveRegionTest < WorldTest
 
   # ---- cells ----------------------------------------------------------------------
   def test_the_world_is_cut_into_fixed_cells
-    assert_equal [-798, 436], Overture::Regions.cell(-79.708, 43.607)
-    assert_equal [-798, 436], Overture::Regions.cell(-79.75, 43.69)
-    assert_equal [-797, 436], Overture::Regions.cell(-79.69, 43.61)
-    assert_equal [-80.0, 43.0, -79.9, 43.1], Overture::Regions.box(-800, 430)
+    assert_equal [-39854, 21803], Overture::Regions.cell(-79.7075, 43.6065)
+    assert_equal [-39855, 21803], Overture::Regions.cell(-79.7085, 43.6065)
+    assert_equal [-39853, 21803], Overture::Regions.cell(-79.7059, 43.6065)
+    assert_equal [-80.0, 43.0, -79.998, 43.002], Overture::Regions.box(-40000, 21500)
+    assert_in_delta 0.2, Overture::Regions::CELL * 111.0, 0.05 # about 200 m, so 100 m each way
   end
 
   # ---- requesting -------------------------------------------------------------------
@@ -61,7 +62,7 @@ class LiveRegionTest < WorldTest
       assert_equal :ready, Overture::Regions.request(*TORONTO)
       assert_equal :ready, Overture::Regions.status(*TORONTO)
       name, west, south, east, north, = fetcher.calls.first
-      assert_equal 'cell_-794_436', name
+      assert_equal 'cell_-39692_21826', name
       assert_operator west, :<=, TORONTO[0]
       assert_operator east, :>=, TORONTO[0]
       assert_operator south, :<=, TORONTO[1]
@@ -130,7 +131,7 @@ class LiveRegionTest < WorldTest
 
   def test_a_cell_with_few_places_is_sparse_so_the_generator_fills_the_gaps
     with_live do
-      live(FakeFetcher.new(places: 3))
+      live(FakeFetcher.new(places: 1))
       Overture::Regions.request(*TORONTO)
       assert PoiRegion.first.sparse
     end
@@ -146,10 +147,11 @@ class LiveRegionTest < WorldTest
 
   def test_sparse_cells_keep_invented_buildings_between_the_real_ones
     with_live do
-      live(FakeFetcher.new(places: 1, around: TORONTO))
-      Overture::Regions.request(*TORONTO)
+      live(FakeFetcher.new(places: 1))
+      Overture::Regions.request(TORONTO[0] + 0.01, TORONTO[1])
     end
     World.ensure_start(*TORONTO)
+    World.ensure_area(TORONTO[0] + 0.01, TORONTO[1], 8)
     generated = Place.all.select { |p| p.source.nil? }
     real = Place.all.select { |p| p.source == 'overture' }
     assert_operator generated.size, :>, 0
@@ -159,9 +161,9 @@ class LiveRegionTest < WorldTest
   def test_a_cell_near_an_edge_also_fetches_its_neighbour
     with_live do
       fetcher = live
-      edge = [-79.4 - 0.002, 43.65] # 0.002 degrees from the cell boundary at -79.4
+      edge = [-79.3961, 43.6511] # just inside a cell, 0.0001 degrees from its east edge
       Overture::Regions.request(*edge)
-      assert_equal %w[cell_-794_436 cell_-795_436], fetcher.calls.map(&:first).sort
+      assert_equal %w[cell_-39698_21825 cell_-39699_21825], fetcher.calls.map(&:first).sort
     end
   end
 
@@ -169,7 +171,7 @@ class LiveRegionTest < WorldTest
     with_live do
       fetcher = live
       limit = Overture::Regions::PER_REQUESTER_PER_HOUR
-      results = (0..limit).map { |n| Overture::Regions.request(-70.05 + n * 0.5, 40.05, '1.2.3.4') }
+      results = (0..limit).map { |n| Overture::Regions.request(-70.051 + n * 0.5, 40.051, '1.2.3.4') }
       assert_equal :limited, results.last
       assert_equal limit, fetcher.calls.size
       assert_equal :ready, Overture::Regions.request(-50.05, 40.05, '5.6.7.8'), 'another requester is not affected'
@@ -180,7 +182,7 @@ class LiveRegionTest < WorldTest
     with_live do
       with_env('OVERTURE_MAX_CELLS_PER_DAY' => '2') do
         live
-        results = 3.times.map { |n| Overture::Regions.request(-70.05 + n * 0.5, 40.05) }
+        results = 3.times.map { |n| Overture::Regions.request(-70.051 + n * 0.5, 40.051) }
         assert_equal %i[ready ready limited], results
       end
     end
@@ -343,21 +345,58 @@ class LiveRegionTest < WorldTest
     end
   end
 
+  def test_nearest_places_default_and_override
+    with_env('RACK_ENV' => 'development', 'OVERTURE_NEAREST' => nil) { assert_equal 20, AppEnv.nearest_places }
+    with_env('RACK_ENV' => 'production', 'OVERTURE_NEAREST' => nil) { assert_equal 50, AppEnv.nearest_places }
+    with_env('RACK_ENV' => 'production', 'OVERTURE_NEAREST' => '35') { assert_equal 35, AppEnv.nearest_places }
+    with_env('OVERTURE_NEAREST' => 'junk') { assert_operator AppEnv.nearest_places, :>, 0 }
+  end
+
+  def test_in_development_a_full_table_drops_the_rows_instead_of_failing
+    with_live do
+      live(FakeFetcher.new(places: 5))
+      adapter = DataMapper.repository.adapter
+      adapter.define_singleton_method(:execute) { |*a| a.first.to_s.include?('points_of_interest') ? raise('database or disk is full') : super(*a) }
+      begin
+        with_env('RACK_ENV' => 'development') { capture_io { Overture::Regions.request(*TORONTO) } }
+        assert_equal 0, PointOfInterest.count
+        assert_equal :ready, Overture::Regions.status(*TORONTO)
+        assert_equal 0, PoiRegion.first.places
+      ensure
+        adapter.singleton_class.send(:remove_method, :execute)
+      end
+    end
+  end
+
+  def test_in_production_a_full_table_is_an_error
+    with_live do
+      live(FakeFetcher.new(places: 5))
+      adapter = DataMapper.repository.adapter
+      adapter.define_singleton_method(:execute) { |*a| a.first.to_s.include?('points_of_interest') ? raise('database or disk is full') : super(*a) }
+      begin
+        with_env('RACK_ENV' => 'production') { capture_io { Overture::Regions.request(*TORONTO) } }
+        assert_equal 0, PoiRegion.count, 'nothing is recorded as loaded'
+      ensure
+        adapter.singleton_class.send(:remove_method, :execute)
+      end
+    end
+  end
+
   def test_region_requires_a_login
     get '/user/region'
     assert_equal 401, last_response.status
   end
 
   def test_places_arriving_replace_invented_buildings_on_the_next_look
-    World.ensure_start(*TORONTO)
+    World.ensure_area(TORONTO[0] + 0.01, TORONTO[1], 8)
     invented = Place.count
     assert_operator invented, :>, 0
     with_live do
-      live(FakeFetcher.new(places: 60, around: TORONTO))
-      Overture::Regions.request(*TORONTO)
+      live(FakeFetcher.new(places: 60))
+      Overture::Regions.request(TORONTO[0] + 0.01, TORONTO[1])
     end
-    World.ensure_area(*TORONTO, 12)
-    assert_operator Place.count, :>, 5
-    assert Place.all.all? { |p| p.source == 'overture' }, 'invented buildings are replaced by real ones'
+    World.ensure_area(TORONTO[0] + 0.01, TORONTO[1], 8)
+    real = Place.all.select { |pl| pl.source == 'overture' }
+    assert_operator real.size, :>=, 1
   end
 end

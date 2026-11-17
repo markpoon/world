@@ -6,7 +6,7 @@ and the file is committed. The server loads it into the database at boot
 (see lib/overture.rb).
 
     pip install duckdb
-    python3 tools/fetch_overture.py [--out DIR] NAME WEST SOUTH EAST NORTH [RELEASE]
+    python3 tools/fetch_overture.py [--out DIR] [--nearest N] NAME WEST SOUTH EAST NORTH [RELEASE]
 
     python3 tools/fetch_overture.py mississauga -79.80 43.52 -79.62 43.69
 
@@ -28,6 +28,11 @@ def main(argv):
     if '--out' in argv:
         i = argv.index('--out')
         out_dir = argv[i + 1]
+        del argv[i:i + 2]
+    nearest = 0
+    if '--nearest' in argv:
+        i = argv.index('--nearest')
+        nearest = int(argv[i + 1])
         del argv[i:i + 2]
     if len(argv) < 6:
         sys.exit(__doc__)
@@ -61,6 +66,10 @@ def main(argv):
                                    ORDER BY confidence DESC, id) <= {PER_TILE}
         ORDER BY lng, lat, id
     """, [west, east, south, north]).fetchall()
+    if nearest > 0:  # keep only the places closest to the middle of the box
+        mid_lng, mid_lat = (west + east) / 2, (south + north) / 2
+        rows = sorted(rows, key=lambda r: (r[6] - mid_lng) ** 2 + (r[7] - mid_lat) ** 2)[:nearest]
+        rows.sort(key=lambda r: (r[6], r[7], r[0]))
 
     with gzip.open(path, 'wt', newline='', encoding='utf-8') as f:
         w = csv.writer(f)

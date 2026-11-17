@@ -33,6 +33,12 @@ module AppEnv
   def self.seed_demo_user?; flag('SEED_DEMO_USER', false); end
   def self.load_overture?;  flag('LOAD_OVERTURE', true); end
   def self.overture_live?;  flag('OVERTURE_LIVE', true); end
+  # how many places to keep around a player: the nearest N in each fetched area.
+  # Default 20 in development, 50 elsewhere; set OVERTURE_NEAREST to change it (0 = no limit).
+  def self.nearest_places
+    value = ENV['OVERTURE_NEAREST'].to_s
+    value =~ /\A\d+\z/ ? value.to_i : (development? ? 20 : 50)
+  end
   def self.geoip?;          flag('GEOIP', true); end
 
   def self.flags

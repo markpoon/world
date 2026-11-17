@@ -74,14 +74,25 @@ module Overture
     adapter = DataMapper.repository.adapter
     quoted  = ->(name) { adapter.send(:quote_name, name) }
     count = 0
-    PoiRegion.transaction do
+    # In development a table that cannot take more rows (disk full, size limit) just
+    # drops the rest of the file; elsewhere the error stops the load, as it should.
+    # (Development loads without one big transaction, so a failed batch cannot abort the rest.)
+    transaction = AppEnv.development? ? ->(&body) { body.call } : ->(&body) { PoiRegion.transaction(&body) }
+    full = false
+    transaction.call do
       rows = []
       flush = lambda do
-        next if rows.empty?
+        next if rows.empty? || full
         marks = rows.map { "(#{(['?'] * COLUMNS.size).join(',')})" }.join(',')
-        adapter.execute("INSERT INTO #{quoted.('points_of_interest')} (#{COLUMNS.map { |c| quoted.(c) }.join(',')}) " \
-                        "VALUES #{marks} ON CONFLICT (#{quoted.('overture_id')}) DO NOTHING", *rows.flatten)
-        count += rows.size
+        begin
+          adapter.execute("INSERT INTO #{quoted.('points_of_interest')} (#{COLUMNS.map { |c| quoted.(c) }.join(',')}) " \
+                          "VALUES #{marks} ON CONFLICT (#{quoted.('overture_id')}) DO NOTHING", *rows.flatten)
+          count += rows.size
+        rescue StandardError => e
+          raise unless AppEnv.development?
+          full = true
+          warn "Overture: the table is full, dropping the rest of #{File.basename(file)} (#{e.message[0, 100]})"
+        end
         rows.clear
       end
       Zlib::GzipReader.open(file) do |gz|
@@ -92,6 +103,7 @@ module Overture
           rows << [row['id'], row['name'].to_s[0, 255], row['category'], row['group'],
                    building_for(row['category'], row['group'], row['taxonomy']),
                    row['confidence'].to_f, lng, lat, ix, iy]
+          break if full
           flush.call if rows.size >= BATCH
         end
       end
@@ -158,7 +170,7 @@ module Overture
       # temporary folder (the caller deletes the folder).
       def call(name, west, south, east, north, release = self.release)
         dir = Dir.mktmpdir('overture')
-        args = [python, SCRIPT, '--out', dir, name.to_s, *[west, south, east, north].map { |v| Float(v).to_s }, release.to_s]
+        args = [python, SCRIPT, '--out', dir, '--nearest', AppEnv.nearest_places.to_s, name.to_s, *[west, south, east, north].map { |v| Float(v).to_s }, release.to_s]
         Open3.popen3(*args) do |stdin, _stdout, stderr, waiter|
           stdin.close
           unless waiter.join(TIMEOUT)
@@ -177,17 +189,18 @@ module Overture
     end
   end
 
-  # The world is cut into fixed squares ("cells", 0.1 degrees, roughly 8 x 11 km).
+  # The world is cut into fixed squares ("cells", 0.002 degrees: about 200 m, so
+  # a player is always within about 100 m of a loaded cell edge).
   # The first time anyone needs a cell it is fetched in the background and
   # stored; from then on it is just database rows. Until it arrives the generator
   # invents buildings, and World.ensure_area swaps them for real ones afterwards.
   module Regions
-    CELL = 0.1
-    EDGE = 0.01 # also fetch the next cell when this close to its edge (degrees)
-    MAX_QUEUE = 4
+    CELL = 0.002
+    EDGE = 0.0005 # also fetch the next cell when this close to its edge (degrees)
+    MAX_QUEUE = 20
     RETRY_AFTER = 600
-    PER_REQUESTER_PER_HOUR = 6
-    SPARSE_BELOW = 50
+    PER_REQUESTER_PER_HOUR = 120
+    SPARSE_BELOW = 3
     LOCK = Mutex.new
     @jobs = {}      # cell name => { state: :queued | :running | :failed, at: Time, error: String }
     @queue = Queue.new
@@ -197,7 +210,7 @@ module Overture
       # Tests: a callable like Fetcher.call, and run jobs right away instead of in a thread.
       attr_accessor :fetcher, :inline
 
-      def daily_limit; Integer(ENV.fetch('OVERTURE_MAX_CELLS_PER_DAY', '40')); end
+      def daily_limit; Integer(ENV.fetch('OVERTURE_MAX_CELLS_PER_DAY', '2000')); end
 
       def enabled?
         AppEnv.overture_live? && (!fetcher.nil? || Fetcher.available?)
@@ -231,13 +244,16 @@ module Overture
       def request(lng, lat, requester = nil)
         result = request_cell(lng, lat, requester)
         i, j = cell(lng, lat)
-        edges = []
-        edges << lng - EDGE if lng - i * CELL < EDGE
-        edges << lng + EDGE if (i + 1) * CELL - lng < EDGE
-        near_lat = []
-        near_lat << lat - EDGE if lat - j * CELL < EDGE
-        near_lat << lat + EDGE if (j + 1) * CELL - lat < EDGE
-        (edges.map { |x| [x, lat] } + near_lat.map { |y| [lng, y] }).each { |x, y| request_cell(x, y, requester) }
+        near_x = []
+        near_x << i - 1 if lng - i * CELL < EDGE
+        near_x << i + 1 if (i + 1) * CELL - lng < EDGE
+        near_y = []
+        near_y << j - 1 if lat - j * CELL < EDGE
+        near_y << j + 1 if (j + 1) * CELL - lat < EDGE
+        # probe the middle of each neighbouring cell
+        (near_x.map { |n| [n, j] } + near_y.map { |n| [i, n] }).each do |ci, cj|
+          request_cell((ci + 0.5) * CELL, (cj + 0.5) * CELL, requester)
+        end
         result
       end
 

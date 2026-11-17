@@ -23,7 +23,8 @@ the current environment and flags (and logs them once at boot).
 | `GEOIP` | guess a visitor's position from their IP address when the browser cannot say | on |
 | `GEOIP_URL` | lookup service for `GEOIP` (JSON with `latitude`/`longitude`; `%{ip}` marks the address) | `https://ipwho.is/%{ip}` |
 | `OVERTURE_RELEASE` | which Overture release to read | see `lib/overture.rb` |
-| `OVERTURE_MAX_CELLS_PER_DAY` | cap on downloads per day | 40 |
+| `OVERTURE_MAX_CELLS_PER_DAY` | cap on downloads per day | 2000 |
+| `OVERTURE_NEAREST` | keep only the N places nearest the middle of each fetched area (0 = no limit) | 20 in development, 50 elsewhere |
 | `DATABASE_URL` | Postgres URL (SQLite in local development if unset) | |
 
 Players sign up from the login screen (`POST /user/signup`; passwords are bcrypt-hashed).
@@ -85,16 +86,16 @@ tooltip shows.
   start of a new account. `World.ensure_start` makes the land around any start
   friendly (a 3x3 clearing, no deep water or mountains next to it), anywhere in
   the world.
-* **Getting data, as players arrive.** The world is cut into 0.1 degree cells
-  (about 8 x 11 km). The first time a cell is needed (at `/locate`, sign-up, login,
+* **Getting data, as players arrive.** The world is cut into 0.002 degree cells
+  (about 200 m, so a player is within about 100 m of the edge). The first time a cell is needed (at `/locate`, sign-up, login,
   and when walking close to a cell edge) `Overture::Regions` fetches it in a
   background thread with `tools/fetch_overture.py` (Python + DuckDB reading
   Overture's public files on S3; no key needed), keeping the three most trusted
   places per tile, and stores it. Until it arrives (about half a minute) the
   generator invents buildings; the browser polls `GET /user/region`, then redraws
-  the map with the real ones. Limits: one fetch at a time, 4 queued, 6 new cells
-  per requester per hour, 40 per day, a failed cell is retried after 10 minutes.
-  A cell with fewer than 50 places counts as sparse and keeps invented buildings
+  the map with the real ones. Limits: one fetch at a time, 20 queued, 120 new cells
+  per requester per hour, 2000 per day, a failed cell is retried after 10 minutes.
+  A cell with fewer than 3 places counts as sparse and keeps invented buildings
   between the real ones. Dense cities are big (a downtown cell is tens of thousands
   of rows), so watch the database size on a small plan.
 * **Data shipped with the app.** `data/overture/mississauga.csv.gz` (made with
