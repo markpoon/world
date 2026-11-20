@@ -1,3 +1,24 @@
+PATH
+  remote: patched_gems/dm-serializer-1.2.2
+  specs:
+    dm-serializer (1.2.2)
+      dm-core (~> 1.2.0)
+      fastercsv (~> 1.5)
+      json (>= 1.6)
+      multi_json (~> 1.0)
+
+PATH
+  remote: patched_gems/dm-types-1.2.2
+  specs:
+    dm-types (1.2.2)
+      bcrypt-ruby (~> 3.0)
+      dm-core (~> 1.2.0)
+      fastercsv (~> 1.5)
+      json (>= 1.6)
+      multi_json (~> 1.0)
+      stringex (~> 1.4)
+      uuidtools (~> 2.1)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -12,12 +33,14 @@ GEM
     bcrypt (3.1.22)
     bcrypt-ruby (3.1.5)
       bcrypt (>= 3.1.3)
+    bigdecimal (4.1.3)
     coderay (1.1.3)
     coffee-script (2.4.1)
       coffee-script-source
       execjs
     coffee-script-source (1.12.2)
     concurrent-ruby (1.3.8)
+    csv (3.3.7)
     data_mapper (1.2.0)
       dm-aggregates (~> 1.2.0)
       dm-constraints (~> 1.2.0)
@@ -44,12 +67,6 @@ GEM
     dm-postgres-adapter (1.2.0)
       dm-do-adapter (~> 1.2.0)
       do_postgres (~> 0.10.6)
-    dm-serializer (1.2.2)
-      dm-core (~> 1.2.0)
-      fastercsv (~> 1.5)
-      json (~> 1.6)
-      json_pure (~> 1.6)
-      multi_json (~> 1.0)
     dm-sqlite-adapter (1.2.0)
       dm-do-adapter (~> 1.2.0)
       do_sqlite3 (~> 0.10.6)
@@ -57,39 +74,31 @@ GEM
       dm-core (~> 1.2.0)
     dm-transactions (1.2.0)
       dm-core (~> 1.2.0)
-    dm-types (1.2.2)
-      bcrypt-ruby (~> 3.0)
-      dm-core (~> 1.2.0)
-      fastercsv (~> 1.5)
-      json (~> 1.6)
-      multi_json (~> 1.0)
-      stringex (~> 1.4)
-      uuidtools (~> 2.1)
     dm-validations (1.2.0)
       dm-core (~> 1.2.0)
     do_postgres (0.10.17)
       data_objects (= 0.10.17)
     do_sqlite3 (0.10.17)
       data_objects (= 0.10.17)
-    execjs (2.10.1)
+    execjs (2.10.2)
+      json (>= 2)
     fastercsv (1.5.5)
     haml (5.2.2)
       temple (>= 0.8.0)
       tilt
-    i18n (1.14.8)
+    i18n (1.15.2)
       concurrent-ruby (~> 1.0)
     io-console (0.9.5)
-    json (1.8.6)
-    json_pure (1.8.6)
+    json (2.21.2)
     method_source (1.1.0)
-    minitest (5.25.4)
-    multi_json (1.15.0)
+    minitest (5.27.0)
+    multi_json (1.21.2)
     nio4r (2.7.5)
     pry (0.16.1)
       coderay (~> 1.1)
       method_source (~> 1.0)
       reline (>= 0.6.0)
-    public_suffix (5.1.1)
+    public_suffix (7.0.5)
     puma (5.6.9)
       nio4r (~> 2.0)
     rack (1.6.13)
@@ -122,23 +131,25 @@ GEM
     uuidtools (2.2.0)
 
 PLATFORMS
+  aarch64-linux
   ruby
-  x86_64-linux
 
 DEPENDENCIES
   activesupport (~> 5.2)
   bcrypt
+  bigdecimal
   coffee-script
+  csv
   data_mapper (~> 1.2)
   dm-postgres-adapter
-  dm-serializer
+  dm-serializer!
   dm-sqlite-adapter
   dm-timestamps
-  dm-types
+  dm-types!
   dm-validations
   execjs
   haml (~> 5.2)
-  json
+  json (~> 2.9)
   pry
   puma (~> 5.6)
   rack (< 2.3)
@@ -147,7 +158,7 @@ DEPENDENCIES
   slim
 
 RUBY VERSION
-   ruby 2.6.10p210
+   ruby 3.3.14p208
 
 BUNDLED WITH
-   1.17.2
+   2.5.22
